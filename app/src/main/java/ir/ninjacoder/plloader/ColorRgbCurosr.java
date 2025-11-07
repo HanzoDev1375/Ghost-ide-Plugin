@@ -4,6 +4,7 @@ import android.graphics.Color;
 import io.github.rosemoe.sora.event.ContentChangeEvent;
 import io.github.rosemoe.sora.event.SelectionChangeEvent;
 import io.github.rosemoe.sora.widget.CodeEditor;
+import io.github.rosemoe.sora.widget.EditorColorScheme;
 import ir.ninjacoder.ghostide.activities.CodeEditorActivity;
 import ir.ninjacoder.ghostide.activities.FileManagerActivity;
 import ir.ninjacoder.ghostide.pl.PluginManagerCompat;
@@ -17,9 +18,12 @@ public class ColorRgbCurosr implements PluginManagerCompat {
 
   private boolean isProcessing = false;
   private long lastProcessTime = 0;
-  private final int PROCESS_DELAY = 150; 
+  private final int PROCESS_DELAY = 150;
+  private int originalCursorColor;
+  private boolean isCursorColorChanged = false;
+  private CodeEditor currentEditor;
 
-  
+  // الگوهای شناسایی رنگ
   private static final Pattern HEX_PATTERN = Pattern.compile("#[0-9A-Fa-f]{3,8}\\b");
   private static final Pattern RGB_PATTERN = Pattern.compile("rgb\\s*\\([^)]+\\)");
   private static final Pattern HSL_PATTERN = Pattern.compile("hsl[a]?\\s*\\([^)]+\\)");
@@ -29,6 +33,11 @@ public class ColorRgbCurosr implements PluginManagerCompat {
 
   @Override
   public void getEditor(CodeEditor editor) {
+    currentEditor = editor;
+
+    // ذخیره رنگ اصلی کرسر
+    originalCursorColor = editor.getColorScheme().getColor(EditorColorScheme.SELECTION_INSERT);
+
     editor.subscribeEvent(
         SelectionChangeEvent.class,
         (event, unsubscribe) -> {
@@ -45,14 +54,24 @@ public class ColorRgbCurosr implements PluginManagerCompat {
             String currentLine = editor.getText().getLineString(cursorLine);
             List<ColorHelper> colorList = getColorsFromLine(currentLine, cursorLine);
 
+            boolean foundColor = false;
+
             for (ColorHelper helper : colorList) {
               if (isCursorOnColor(helper, cursorLine, cursorColumn)) {
+                changeCursorColor(editor, helper);
                 showColorPicker(editor, helper);
-                return;
+                foundColor = true;
+                break;
               }
             }
+
+            // اگر روی رنگ نیست، رنگ کرسر را به حالت عادی برگردان
+            if (!foundColor) {
+              restoreOriginalCursorColor();
+            }
           } catch (Exception e) {
-            
+            // در صورت خطا، رنگ کرسر را به حالت عادی برگردان
+            restoreOriginalCursorColor();
           }
         });
 
@@ -63,6 +82,8 @@ public class ColorRgbCurosr implements PluginManagerCompat {
               || event.getAction() == ContentChangeEvent.ACTION_INSERT
               || event.getAction() == ContentChangeEvent.ACTION_SET_NEW_TEXT) {
             isProcessing = false;
+            // پس از تغییر محتوا، رنگ کرسر را بررسی کن
+            restoreOriginalCursorColor();
           }
         });
   }
@@ -74,20 +95,20 @@ public class ColorRgbCurosr implements PluginManagerCompat {
       return colorList;
     }
 
-    
+    // شناسایی رنگ‌های HEX
     Matcher hexMatcher = HEX_PATTERN.matcher(lineText);
     while (hexMatcher.find()) {
       String color = expandShortHex(hexMatcher.group());
       colorList.add(new ColorHelper(lineNumber, hexMatcher.start(), color, "HEX"));
     }
 
-    
+    // شناسایی رنگ‌های RGB
     Matcher rgbMatcher = RGB_PATTERN.matcher(lineText);
     while (rgbMatcher.find()) {
       colorList.add(new ColorHelper(lineNumber, rgbMatcher.start(), rgbMatcher.group(), "RGB"));
     }
 
-    
+    // شناسایی رنگ‌های HSL
     Matcher hslMatcher = HSL_PATTERN.matcher(lineText);
     while (hslMatcher.find()) {
       colorList.add(new ColorHelper(lineNumber, hslMatcher.start(), hslMatcher.group(), "HSL"));
@@ -104,6 +125,31 @@ public class ColorRgbCurosr implements PluginManagerCompat {
     return cursorColumn >= start && cursorColumn <= end;
   }
 
+  private void changeCursorColor(CodeEditor editor, ColorHelper colorHelper) {
+    try {
+      int color;
+      String colorText = colorHelper.getColorHex();
+
+      if (colorHelper.getType().equals("RGB")) {
+        color = parseRGB(colorText);
+      } else if (colorHelper.getType().equals("HSL")) {
+        color = parseHSL(colorText);
+      } else {
+        color = Color.parseColor(colorText);
+      }
+
+      // تغییر رنگ کرسر
+      editor.getColorScheme().setColor(EditorColorScheme.SELECTION_INSERT, color);
+      isCursorColorChanged = true;
+
+      // فورس ریدراو برای اعمال تغییرات
+      editor.invalidate();
+    } catch (Exception e) {
+      // در صورت خطا در پارس کردن رنگ، از رنگ پیش‌فرض استفاده کن
+      restoreOriginalCursorColor();
+    }
+  }
+
   private void showColorPicker(CodeEditor editor, ColorHelper colorHelper) {
     try {
       CompactColorPickerView colorPicker = new CompactColorPickerView(editor.getContext());
@@ -117,7 +163,7 @@ public class ColorRgbCurosr implements PluginManagerCompat {
 
       EditorPopUp.showCustomViewAtCursor(editor, colorPicker);
     } catch (Exception e) {
-      
+      // ignore
     }
   }
 
@@ -209,10 +255,25 @@ public class ColorRgbCurosr implements PluginManagerCompat {
 
       editor.getText().replace(line, start, line, end, newColor);
     } catch (Exception e) {
-      
+      // ignore
     } finally {
-      
-      editor.postDelayed(() -> isProcessing = false, 200);
+      // بعد از جایگزینی، رنگ کرسر را به حالت عادی برگردان
+      editor.postDelayed(
+          () -> {
+            isProcessing = false;
+            restoreOriginalCursorColor();
+          },
+          200);
+    }
+  }
+
+  private void restoreOriginalCursorColor() {
+    if (isCursorColorChanged && currentEditor != null) {
+      currentEditor
+          .getColorScheme()
+          .setColor(EditorColorScheme.SELECTION_INSERT, originalCursorColor);
+      isCursorColorChanged = false;
+      currentEditor.invalidate();
     }
   }
 
@@ -294,5 +355,10 @@ public class ColorRgbCurosr implements PluginManagerCompat {
   @Override
   public String setName() {
     return "Color Rgba finder (Optimized)";
+  }
+
+  @Override
+  public String langModel() {
+    return ".css";
   }
 }
