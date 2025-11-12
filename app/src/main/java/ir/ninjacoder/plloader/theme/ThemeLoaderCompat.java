@@ -2,10 +2,10 @@ package ir.ninjacoder.plloader.theme;
 
 import android.app.Activity;
 import android.widget.Toast;
-import ir.ninjacoder.ghostide.activities.FileManagerActivity;
+import ir.ninjacoder.ghostide.core.activities.FileManagerActivity;
 import io.github.rosemoe.sora.widget.CodeEditor;
-import ir.ninjacoder.ghostide.activities.CodeEditorActivity;
-import ir.ninjacoder.ghostide.pl.PluginManagerCompat;
+import ir.ninjacoder.ghostide.core.activities.CodeEditorActivity;
+import ir.ninjacoder.ghostide.core.pl.PluginManagerCompat;
 import android.content.SharedPreferences;
 import android.content.Context;
 

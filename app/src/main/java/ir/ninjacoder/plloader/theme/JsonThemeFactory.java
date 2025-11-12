@@ -10,6 +10,7 @@ import android.graphics.drawable.Drawable;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Button;
 import android.widget.EditText;
@@ -20,6 +21,7 @@ import android.widget.CheckBox;
 import android.widget.RadioButton;
 import android.widget.Toast;
 import androidx.appcompat.widget.Toolbar;
+import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
@@ -43,12 +45,14 @@ import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.chip.Chip;
 import com.google.android.material.shape.CornerFamily;
 import com.google.android.material.shape.ShapeAppearanceModel;
-import ir.ninjacoder.ghostide.glidecompat.GlideCompat;
-import ir.ninjacoder.ghostide.utils.ObjectUtils;
-import ir.ninjacoder.ghostide.widget.ExrtaFab;
+import ir.ninjacoder.ghostide.core.glidecompat.GlideCompat;
+import ir.ninjacoder.ghostide.core.utils.ObjectUtils;
+import ir.ninjacoder.ghostide.core.widget.ExrtaFab;
+
 import ir.ninjacoder.prograsssheet.perfence.ListItemView;
 import java.util.List;
 import java.util.ArrayList;
+import java.lang.reflect.Field;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 public class JsonThemeFactory {
@@ -152,6 +156,19 @@ public class JsonThemeFactory {
                             .show();
                       }
                       ((Activity) v.getContext()).recreate();
+
+                      // آپدیت کامل همه ویوها بعد از تغییر تم
+                      viewGroup.postDelayed(
+                          () -> {
+                            View updatedRootView =
+                                ((Activity) v.getContext()).getWindow().getDecorView();
+                            ViewGroup updatedContentView =
+                                updatedRootView.findViewById(android.R.id.content);
+                            if (updatedContentView != null) {
+                              forceUpdateAllViews(updatedContentView);
+                            }
+                          },
+                          800);
                       dialog.dismiss();
                     })
                 .setNegativeButton("لغو", null)
@@ -171,11 +188,125 @@ public class JsonThemeFactory {
     reapplySpecificComponents(viewGroup);
   }
 
+  // متد جدید برای فورس آپدیت همه ویوها
+  static void forceUpdateAllViews(ViewGroup viewGroup) {
+    if (viewGroup == null) return;
+
+    for (int i = 0; i < viewGroup.getChildCount(); i++) {
+      View child = viewGroup.getChildAt(i);
+
+      // اعمال تم روی خود ویو
+      applyThemeDeep(child);
+
+      // اگر MaterialCardView هست، عمیق‌تر آپدیت کن
+      if (child instanceof MaterialCardView) {
+        forceUpdateCardViewChildren((MaterialCardView) child);
+      }
+      // اگر RecyclerView هست
+      else if (child instanceof RecyclerView) {
+        forceUpdateRecyclerView((RecyclerView) child);
+      }
+      // اگر ViewGroup معمولی هست
+      else if (child instanceof ViewGroup) {
+        forceUpdateAllViews((ViewGroup) child);
+      }
+    }
+  }
+
+  // آپدیت عمیق برای هر ویو
+  static void applyThemeDeep(View view) {
+    if (view == null) return;
+
+    applyTheme(view);
+
+    // برای TextViewها اطمینان از آپدیت رنگ متن
+    if (view instanceof TextView) {
+      TextView textView = (TextView) view;
+      textView.setTextColor(
+          JsonTheme.color("onSurface", get(textView.getContext(), ObjectUtils.colorOnSurface)));
+    }
+
+    // برای MaterialCardView
+    if (view instanceof MaterialCardView) {
+      applyMaterialCardViewTheme((MaterialCardView) view);
+    }
+  }
+
+  // آپدیت فرزندان MaterialCardView
+  static void forceUpdateCardViewChildren(MaterialCardView cardView) {
+    if (cardView == null) return;
+
+    // آپدیت خود کارت
+    applyMaterialCardViewTheme(cardView);
+
+    // آپدیت همه فرزندان
+    for (int i = 0; i < cardView.getChildCount(); i++) {
+      View child = cardView.getChildAt(i);
+      applyThemeDeep(child);
+
+      // اگر فرزند خودش ViewGroup هست، بازگشتی برو
+      if (child instanceof ViewGroup) {
+        forceUpdateAllViews((ViewGroup) child);
+      }
+    }
+  }
+
+  static void forceUpdateRecyclerView(RecyclerView recyclerView) {
+    if (recyclerView == null) return;
+
+    // آپدیت RecyclerView
+    recyclerView.setBackgroundColor(
+        JsonTheme.color("surface", get(recyclerView.getContext(), ObjectUtils.colorSurface)));
+
+    // آپدیت ویوهای قابل مشاهده
+    for (int i = 0; i < recyclerView.getChildCount(); i++) {
+      View itemView = recyclerView.getChildAt(i);
+      forceUpdateListItem(itemView);
+    }
+
+    // آپدیت ویوهای کش شده در RecycledViewPool
+    try {
+      RecyclerView.RecycledViewPool pool = recyclerView.getRecycledViewPool();
+      for (int i = 0; i < pool.getRecycledViewCount(0); i++) {
+        RecyclerView.ViewHolder holder = pool.getRecycledView(0);
+        if (holder != null) {
+          forceUpdateListItem(holder.itemView);
+        }
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+
+    // فورس ریدراو
+    recyclerView.getAdapter().notifyDataSetChanged();
+    recyclerView.invalidate();
+  }
+
+  // آپدیت آیتم‌های لیست
+  static void forceUpdateListItem(View itemView) {
+    if (itemView == null) return;
+
+    // اعمال تم روی خود آیتم
+    applyThemeDeep(itemView);
+
+    // اگر ListItemView خاص هست
+    if (itemView instanceof ListItemView) {
+      applyListItem((ListItemView) itemView);
+    }
+
+    // آپدیت همه فرزندان آیتم
+    if (itemView instanceof ViewGroup) {
+      forceUpdateAllViews((ViewGroup) itemView);
+    }
+  }
+
   static void reapplySpecificComponents(ViewGroup viewGroup) {
     for (int i = 0; i < viewGroup.getChildCount(); i++) {
       View child = viewGroup.getChildAt(i);
 
-      if (child instanceof MaterialSwitch) {
+      if (child instanceof RecyclerView) {
+        forceUpdateRecyclerView((RecyclerView) child);
+      } else if (child instanceof MaterialSwitch) {
         applySwitchMaterialTheme((MaterialSwitch) child);
       } else if (child instanceof MaterialCheckBox) {
         applyMaterialCheckBoxTheme((MaterialCheckBox) child);
@@ -188,7 +319,7 @@ public class JsonThemeFactory {
       } else if (child instanceof NavigationView) {
         applyNavigationViewTheme((NavigationView) child);
       } else if (child instanceof MaterialCardView) {
-        applyMaterialCardViewTheme((MaterialCardView) child);
+        forceUpdateCardViewChildren((MaterialCardView) child);
       } else if (child instanceof Button) {
         applyButtonTheme((Button) child);
       } else if (child instanceof CheckBox) {
@@ -213,7 +344,9 @@ public class JsonThemeFactory {
     try {
       Context context = v.getContext();
 
-      if (v instanceof TextView) {
+      if (v instanceof RecyclerView) {
+        forceUpdateRecyclerView((RecyclerView) v);
+      } else if (v instanceof TextView) {
         applyTextTheme((TextView) v);
       } else if (v instanceof MaterialButton) {
         applyMaterialButtonTheme((MaterialButton) v);
@@ -244,7 +377,7 @@ public class JsonThemeFactory {
       } else if (v instanceof SeekBar) {
         applySeekBarTheme((SeekBar) v);
       } else if (v instanceof MaterialCardView) {
-        applyMaterialCardViewTheme((MaterialCardView) v);
+        forceUpdateCardViewChildren((MaterialCardView) v);
       } else if (v instanceof FloatingActionButton) {
         applyFloatingActionButtonTheme((FloatingActionButton) v);
       } else if (v instanceof ExtendedFloatingActionButton) {
@@ -584,6 +717,14 @@ public class JsonThemeFactory {
     cardView.setRippleColor(
         ColorStateList.valueOf(
             JsonTheme.color("primaryContainer", get(context, ObjectUtils.colorPrimaryContainer))));
+
+    // آپدیت متن‌های داخل کارت
+    for (int i = 0; i < cardView.getChildCount(); i++) {
+      View child = cardView.getChildAt(i);
+      if (child instanceof TextView) {
+        applyTextTheme((TextView) child);
+      }
+    }
   }
 
   static void applyExtendedFABTheme(ExtendedFloatingActionButton extendedFab) {

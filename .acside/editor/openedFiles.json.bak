@@ -1,0 +1,20 @@
+{
+  "allFiles": [
+    {
+      "file": "/storage/emulated/0/AndroidIDEProjects/My pl/app/src/main/java/ir/ninjacoder/plloader/img/ImagePreview.java",
+      "selection": {
+        "end": {
+          "column": 12,
+          "index": 1744,
+          "line": 51
+        },
+        "start": {
+          "column": 10,
+          "index": 1742,
+          "line": 51
+        }
+      }
+    }
+  ],
+  "selectedFile": "/storage/emulated/0/AndroidIDEProjects/My pl/app/src/main/java/ir/ninjacoder/plloader/img/ImagePreview.java"
+}

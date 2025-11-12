@@ -10,7 +10,7 @@ import android.widget.TextView;
 import io.github.rosemoe.sora.widget.EditorColorScheme;
 
 public class EditorPopUp {
-  static void showPowerMenuAtCursor(CodeEditor editor, String message) {
+  public static void showPowerMenuAtCursor(CodeEditor editor, String message) {
     try {
 
       EditorPopupWindow popupWindow =
@@ -64,7 +64,15 @@ public class EditorPopUp {
       float windowX = Math.max(charX - popupWindow.getWidth() / 2f, 0f);
       popupWindow.setLocationAbsolutely((int) windowX, (int) windowY);
       popupWindow.show();
-
+      editor.subscribeEvent(
+          ContentChangeEvent.class,
+          (event, sub) -> {
+            if (event.getAction() == ContentChangeEvent.ACTION_DELETE
+                || event.getAction() == ContentChangeEvent.ACTION_INSERT
+                || event.getAction() == ContentChangeEvent.ACTION_SET_NEW_TEXT) {
+              popupWindow.dismiss();
+            } else popupWindow.show();
+          });
     } catch (Exception e) {
       e.printStackTrace();
     }
@@ -119,8 +127,8 @@ public class EditorPopUp {
       float windowX = Math.max(charX - popupWindow.getWidth() / 2f, 0f);
       popupWindow.setLocationAbsolutely((int) windowX, (int) windowY);
       popupWindow.show();
-      if(editor.getCursor().isSelected()) {
-      	popupWindow.dismiss();
+      if (editor.getCursor().isSelected()) {
+        popupWindow.dismiss();
       }
       editor.subscribeEvent(
           ContentChangeEvent.class,
@@ -131,7 +139,6 @@ public class EditorPopUp {
               popupWindow.dismiss();
             } else popupWindow.show();
           });
-
 
     } catch (Exception e) {
       e.printStackTrace();
