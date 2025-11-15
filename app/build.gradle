@@ -48,4 +48,6 @@ dependencies {
         exclude group: "org.jetbrains", module: "annotations"
         exclude group: "org.jetbrains", module: "annotations-java5"
     }
+    implementation("org.jsoup:jsoup:1.21.1")
+    implementation("com.squareup.okhttp3:okhttp:5.0.0-alpha.16")
 }

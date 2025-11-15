@@ -1,83 +1,118 @@
 package ir.ninjacoder.plloader.comment;
 
+import android.util.Log;
 import io.github.rosemoe.sora.text.TextAnalyzeResult;
 import io.github.rosemoe.sora.text.TextStyle;
 import io.github.rosemoe.sora.widget.EditorColorScheme;
-import java.util.regex.Pattern;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class BetterComment {
+
+  private static final Pattern LINE_COMMENT_PATTERN = Pattern.compile("^\\s*//\\s*(.*)$");
+  private static final Pattern BLOCK_COMMENT_START = Pattern.compile("^\\s*/\\*.*$");
+  private static final Pattern BLOCK_COMMENT_LINE = Pattern.compile("^\\s*\\*\\s*(.*)$");
+  private static final Pattern BLOCK_COMMENT_END = Pattern.compile(".*\\*/\\s*$");
+  private static final Pattern KEYWORD_PATTERN =
+      Pattern.compile("^(?:!|\\?|\\*|TODO|FIX|BUG|HACK)\\b[: -]?(.*)?", Pattern.CASE_INSENSITIVE);
+
+  private static final Pattern HTML_TAG_OPEN = Pattern.compile("<\\??([^/>\\s]+)");
+  private static final Pattern HTML_TAG_CLOSE = Pattern.compile("</\\s*([^>\\s]+)\\s*>");
+  private static final Pattern HTML_ATTR_NAME = Pattern.compile("([^='\"</>\\s:]+)(?=[:=]|\\s|$)");
+  private static final Pattern HTML_ATTR_VALUE = Pattern.compile("([\"'])(.*?)\\1");
+  private static final Pattern HTML_NAMESPACE = Pattern.compile("(xmlns:)([^='\"\\s]+)");
 
   public static void betterComments(
       String commentText, int line, int startColumn, TextAnalyzeResult result) {
 
-    int alertColor = EditorColorScheme.tscolormatch1;
-    int questionColor = EditorColorScheme.jskeyword;
-    int importantColor = EditorColorScheme.javafun;
-    int todoColor = EditorColorScheme.tscolormatch3;
-    int defaultColor = EditorColorScheme.COMMENT;
+    String trimmed = commentText.trim();
 
-    // الگوی ساده‌تر و مطمئن‌تر
-    Pattern pattern = Pattern.compile("(\\!|\\?|\\*|\\b(TODO|FIX|BUG|HACK):?)");
-    Matcher matcher = pattern.matcher(commentText);
+    if (BLOCK_COMMENT_START.matcher(trimmed).find()
+        || BLOCK_COMMENT_LINE.matcher(trimmed).find()
+        || BLOCK_COMMENT_END.matcher(trimmed).find()) {
+      handleBlockCommentLine(commentText, line, startColumn, result);
+      return;
+    }
 
+    Matcher lineMatcher = LINE_COMMENT_PATTERN.matcher(commentText);
+    if (lineMatcher.find()) {
+      String content = lineMatcher.group(1).trim();
+
+      if (content.matches(".*</?\\w+.*")) {
+        getHtmlComment(commentText, line, startColumn, result);
+        return;
+      }
+
+      long style = detectKeywordStyle(content);
+      addStyledText(commentText, line, startColumn, style, result);
+      return;
+    }
+
+    addStyledText(commentText, line, startColumn, defaultStyle(), result);
+  }
+
+  private static long detectKeywordStyle(String content) {
+    Matcher matcher = KEYWORD_PATTERN.matcher(content);
     if (matcher.find()) {
-      String symbol = matcher.group();
-      int symbolStart = matcher.start();
-      int symbolEnd = matcher.end();
+      String keyword = matcher.group(0).toUpperCase();
 
-      int symbolColor = defaultColor;
-      int textColor = defaultColor; // رنگ متن بعد از علامت
+      if (keyword.startsWith("!"))
+        return TextStyle.makeStyle(EditorColorScheme.tscolormatch1, 0, true, false, false);
+      if (keyword.startsWith("?"))
+        return TextStyle.makeStyle(EditorColorScheme.jskeyword, 0, false, true, false);
+      if (keyword.startsWith("*"))
+        return TextStyle.makeStyle(EditorColorScheme.javafun, 0, true, true, false);
+      if (keyword.contains("TODO")
+          || keyword.contains("FIX")
+          || keyword.contains("BUG")
+          || keyword.contains("HACK"))
+        return TextStyle.makeStyle(EditorColorScheme.tscolormatch3, 0, false, false, false);
+    }
 
-      if (symbol.equals("!")) {
-        symbolColor = alertColor;
-        textColor = alertColor; // کل متن بعد از ! هم قرمز بشه
-      } else if (symbol.equals("?")) {
-        symbolColor = questionColor;
-        textColor = questionColor; // کل متن بعد از ? هم آبی بشه
-      } else if (symbol.equals("*")) {
-        symbolColor = importantColor;
-        textColor = importantColor; // کل متن بعد از * هم نارنجی بشه
-      } else if (symbol.startsWith("TODO")
-          || symbol.startsWith("FIX")
-          || symbol.startsWith("BUG")
-          || symbol.startsWith("HACK")) {
-        symbolColor = todoColor;
-        textColor = todoColor; // کل متن بعد از کلمات کلیدی هم سبز بشه
-      }
+    return defaultStyle();
+  }
 
-      // قسمت قبل از علامت (همیشه رنگ پیش‌فرض)
-      if (symbolStart > 0) {
-        String beforeSymbol = commentText.substring(0, symbolStart);
-        addTextWithColor(beforeSymbol, line, startColumn, defaultColor, result);
-      }
+  private static void handleBlockCommentLine(
+      String text, int line, int startColumn, TextAnalyzeResult result) {
+    String trimmed = text.trim();
+    String inner = trimmed.replaceFirst("^(/\\*+|\\*+|\\*/+)", "").trim();
+  }
 
-      // خود علامت
-      addTextWithColor(symbol, line, startColumn + symbolStart, symbolColor, result, true);
+  static void getHtmlComment(String text, int line, int col, TextAnalyzeResult result) {
+    try {
+      addStyledText(text, line, col, defaultStyle(), result);
 
-      // قسمت بعد از علامت با رنگ مخصوص
-      if (symbolEnd < commentText.length()) {
-        String afterSymbol = commentText.substring(symbolEnd);
-        addTextWithColor(afterSymbol, line, startColumn + symbolEnd, textColor, result);
-      }
-    } else {
-      // کل کامنت با رنگ پیش‌فرض
-      addTextWithColor(commentText, line, startColumn, defaultColor, result);
+      highlightMatches(text, line, col, HTML_TAG_OPEN, EditorColorScheme.HTML_TAG, result);
+      highlightMatches(text, line, col, HTML_TAG_CLOSE, EditorColorScheme.HTML_TAG, result);
+      highlightMatches(text, line, col, HTML_ATTR_NAME, EditorColorScheme.ATTRIBUTE_NAME, result);
+      highlightMatches(text, line, col, HTML_ATTR_VALUE, EditorColorScheme.LITERAL, result);
+      highlightMatches(text, line, col, HTML_NAMESPACE, EditorColorScheme.OPERATOR, result);
+
+    } catch (Throwable err) {
+      Log.e("BetterHTML", "Highlight Error: " + err);
     }
   }
 
-  private static void addTextWithColor(
-      String text, int line, int startColumn, int color, TextAnalyzeResult result, boolean isbold) {
-    for (int i = 0; i < text.length(); i++) {
-      result.addIfNeeded(
-          line, startColumn + i, TextStyle.makeStyle(color, 0, isbold, false, false));
+  private static void highlightMatches(
+      String text, int line, int col, Pattern pattern, int color, TextAnalyzeResult result) {
+    Matcher matcher = pattern.matcher(text);
+    while (matcher.find()) {
+      int start = matcher.start();
+      int end = matcher.end();
+      for (int i = start; i < end; i++) {
+        result.addIfNeeded(line, col + i, TextStyle.makeStyle(color, 0, false, false, false));
+      }
     }
   }
 
-  private static void addTextWithColor(
-      String text, int line, int startColumn, int color, TextAnalyzeResult result) {
+  private static void addStyledText(
+      String text, int line, int startColumn, long style, TextAnalyzeResult result) {
     for (int i = 0; i < text.length(); i++) {
-      result.addIfNeeded(line, startColumn + i, color);
+      result.addIfNeeded(line, startColumn + i, style);
     }
+  }
+
+  private static long defaultStyle() {
+    return TextStyle.makeStyle(EditorColorScheme.COMMENT, 0, false, false, false);
   }
 }

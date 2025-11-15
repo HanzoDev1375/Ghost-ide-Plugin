@@ -156,15 +156,15 @@ public class JavaScriptCodeAnalyzer implements CodeAnalyzer {
                 line, column, TextStyle.makeStyle(EditorColorScheme.red, 0, true, false, false));
             break;
           case JavaScriptLexer.SingleLineComment:
-          case JavaScriptLexer.MultiLineComment:
           BetterComment.betterComments(token.getText(),line,column,result);
           break;
-          case JavaScriptLexer.HtmlComment:
+          case JavaScriptLexer.MultiLineComment:
+        case JavaScriptLexer.HtmlComment:
             classNamePrevious = false;
             result.addIfNeeded(
                 line,
                 column,
-                TextStyle.makeStyle(EditorColorScheme.COMMENT, 0, false, true, false));
+                TextStyle.makeStyle(EditorColorScheme.COMMENT, EditorColorScheme.green, false, true, false));
             break;
           case JavaScriptLexer.Var:
           case JavaScriptLexer.NonStrictLet:

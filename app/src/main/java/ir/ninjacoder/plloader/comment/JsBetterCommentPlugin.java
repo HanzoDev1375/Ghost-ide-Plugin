@@ -1,10 +1,12 @@
 package ir.ninjacoder.plloader.comment;
 
+import android.graphics.Color;
 import android.util.Log;
 import android.widget.Toast;
 import io.github.rosemoe.sora.interfaces.CodeAnalyzer;
 import io.github.rosemoe.sora.langs.javascript.JavaScriptLanguage;
 import io.github.rosemoe.sora.widget.CodeEditor;
+import io.github.rosemoe.sora.widget.EditorColorScheme;
 import ir.ninjacoder.ghostide.core.activities.CodeEditorActivity;
 import ir.ninjacoder.ghostide.core.activities.FileManagerActivity;
 import ir.ninjacoder.ghostide.core.pl.PluginManagerCompat;
@@ -75,8 +77,8 @@ public class JsBetterCommentPlugin implements PluginManagerCompat {
           () -> {
             if (currentEditor != null) {
               Log.d("JsPlugin", "🔄 Analyzing code...");
-              currentEditor.analyze(true);
-              currentEditor.invalidate();
+            //  currentEditor.analyze(true);
+            //  currentEditor.invalidate();
               Log.d("JsPlugin", "✅ Analysis complete");
             }
           },
