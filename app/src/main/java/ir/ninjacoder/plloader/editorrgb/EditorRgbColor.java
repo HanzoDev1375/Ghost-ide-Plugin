@@ -7,6 +7,7 @@ import android.os.Handler;
 import android.animation.ArgbEvaluator;
 import com.google.android.material.tabs.TabLayout;
 import io.github.rosemoe.sora.widget.EditorColorScheme;
+import ir.ninjacoder.ghostide.core.activities.BaseCompat;
 import ir.ninjacoder.ghostide.core.activities.FileManagerActivity;
 import ir.ninjacoder.ghostide.core.activities.CodeEditorActivity;
 import io.github.rosemoe.sora.widget.CodeEditor;
@@ -227,4 +228,7 @@ public class EditorRgbColor implements PluginManagerCompat {
         };
     handler.post(runnable);
   }
+
+  @Override
+  public void getBaseCompat(BaseCompat arg0) {}
 }

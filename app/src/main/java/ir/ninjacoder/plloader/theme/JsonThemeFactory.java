@@ -155,7 +155,7 @@ public class JsonThemeFactory {
                         Toast.makeText(v.getContext(), "خطا در اعمال تم", Toast.LENGTH_SHORT)
                             .show();
                       }
-                      ((Activity) v.getContext()).recreate();
+                      
 
                       // آپدیت کامل همه ویوها بعد از تغییر تم
                       viewGroup.postDelayed(
@@ -170,6 +170,7 @@ public class JsonThemeFactory {
                           },
                           800);
                       dialog.dismiss();
+                      ((Activity) v.getContext()).finishAffinity();
                     })
                 .setNegativeButton("لغو", null)
                 .show();

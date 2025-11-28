@@ -7,20 +7,17 @@ import io.github.rosemoe.sora.interfaces.CodeAnalyzer;
 import io.github.rosemoe.sora.langs.css3.CSS3Language;
 import io.github.rosemoe.sora.text.TextAnalyzeResult;
 import io.github.rosemoe.sora.interfaces.AutoCompleteProvider;
-import io.github.rosemoe.sora.widget.CursorAnimationModel;
 import ir.ninjacoder.ghostide.core.IdeEditor;
+import ir.ninjacoder.ghostide.core.activities.BaseCompat;
 import ir.ninjacoder.ghostide.core.activities.FileManagerActivity;
 import ir.ninjacoder.ghostide.core.activities.CodeEditorActivity;
 import io.github.rosemoe.sora.widget.CodeEditor;
 import ir.ninjacoder.ghostide.core.pl.PluginManagerCompat;
-
-// ایمپورت‌های جدید برای مدیریت رویدادها
 import io.github.rosemoe.sora.event.SelectionChangeEvent;
 import io.github.rosemoe.sora.event.ContentChangeEvent;
 import com.google.android.material.tabs.TabLayout;
 import ir.ninjacoder.plloader.EditorPopUp;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 
 import java.io.File;
 import java.io.BufferedReader;
@@ -31,6 +28,8 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.Set;
 import java.util.HashSet;
+import org.json.JSONObject;
+import java.util.Iterator;
 
 public class CssLspLang implements PluginManagerCompat {
 
@@ -39,7 +38,6 @@ public class CssLspLang implements PluginManagerCompat {
   private TabLayout tabLayout;
   private boolean isCssFile = false;
 
-  // برای نمایش محتوای getValue
   private boolean isProcessing = false;
   private long lastProcessTime = 0;
   private final int PROCESS_DELAY = 150;
@@ -118,7 +116,7 @@ public class CssLspLang implements PluginManagerCompat {
   }
 
   private void setupEventListeners(CodeEditor editor) {
-    // لیستنر برای تغییر موقعیت کرسر
+
     editor.subscribeEvent(
         SelectionChangeEvent.class,
         (event, unsubscribe) -> {
@@ -142,7 +140,6 @@ public class CssLspLang implements PluginManagerCompat {
           }
         });
 
-    // لیستنر برای تغییر محتوا
     editor.subscribeEvent(
         ContentChangeEvent.class,
         (event, sub) -> {
@@ -156,20 +153,17 @@ public class CssLspLang implements PluginManagerCompat {
 
   private void checkAndDisplayValue(int cursorLine, int cursorColumn, String currentLine) {
     try {
-      // پیدا کردن تمام propertyهای CSS در خط فعلی
+
       List<CssProperty> properties = findCssProperties(currentLine, cursorLine);
 
       for (CssProperty property : properties) {
         if (isCursorOnProperty(property, cursorLine, cursorColumn)) {
-          // نمایش محتوای getValue برای این property
+
           displayPropertyValue(property);
           return;
         }
       }
-
-      // اگر روی property نیست، نمایش را پنهان کن
       hidePropertyDisplay();
-
     } catch (Exception e) {
       Log.e("CssLspPlugin", "❌ Error checking property: " + e.getMessage());
     }
@@ -182,8 +176,6 @@ public class CssLspLang implements PluginManagerCompat {
       return properties;
     }
 
-    // الگو برای شناسایی propertyهای CSS
-    // مثال: color: red; background: blue;
     String propertyPattern = "([a-zA-Z-]+)\\s*:";
     java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(propertyPattern);
     java.util.regex.Matcher matcher = pattern.matcher(lineText);
@@ -206,11 +198,11 @@ public class CssLspLang implements PluginManagerCompat {
 
   private void displayPropertyValue(CssProperty property) {
     try {
-      // استفاده از LspContent برای پیدا کردن مقدار getValue
+
       String propertyValue = findPropertyValueFromLsp(property.getName());
 
       if (propertyValue != null && !propertyValue.isEmpty()) {
-        // نمایش tooltip با محتوای getValue
+
         showValueTooltip(property.getName(), propertyValue);
         Log.d(
             "CssLspPlugin", "📝 Displaying value for " + property.getName() + ": " + propertyValue);
@@ -221,7 +213,7 @@ public class CssLspLang implements PluginManagerCompat {
   }
 
   private String findPropertyValueFromLsp(String propertyName) {
-    // استفاده از LspContent برای پیدا کردن مقدار getValue
+
     try {
       if (cssLsp != null && cssLsp.lspList != null) {
         for (NameValue item : cssLsp.lspList) {
@@ -237,26 +229,22 @@ public class CssLspLang implements PluginManagerCompat {
   }
 
   private void showValueTooltip(String propertyName, String propertyValue) {
-    // نمایش tooltip با استفاده از Toast
+
     try {
       if (currentEditor != null && currentEditor.getContext() != null) {
         String displayText = propertyName + ": " + propertyValue;
-        // محدود کردن طول متن اگر خیلی طولانی باشد
+
         if (displayText.length() > 100) {
           displayText = displayText.substring(0, 100) + "...";
         }
         EditorPopUp.showPowerMenuAtCursor(currentEditor, displayText);
-        // Toast.makeText(currentEditor.getContext(), displayText, Toast.LENGTH_SHORT).show();
       }
     } catch (Exception e) {
       Log.e("CssLspPlugin", "❌ Error showing tooltip: " + e.getMessage());
     }
   }
 
-  private void hidePropertyDisplay() {
-    // در این پیاده‌سازی، tooltip به صورت خودکار از بین می‌رود
-    // اگر نیاز به action خاصی دارید، اینجا اضافه کنید
-  }
+  private void hidePropertyDisplay() {}
 
   @Override
   public String setName() {
@@ -306,16 +294,11 @@ public class CssLspLang implements PluginManagerCompat {
     currentEditor.setCursorAnimationEnabled(false);
 
     currentEditor.post(
-        () -> { 
+        () -> {
           currentEditor.setDividerWidth(3f);
           currentEditor.setDividerMargin(49f);
-          currentEditor.addLineIcon(1, android.R.drawable.ic_dialog_info);
-          currentEditor.addLineIcon(2,android.R.drawable.ic_menu_add);
-          currentEditor.addLineIcon(10,android.R.drawable.ic_menu_add);
-          currentEditor.addLineIcon(100,android.R.drawable.ic_delete);
           currentEditor.postDelayed(
               () -> {
-             /// currentEditor.setCursorAnimationModel(CursorAnimationModel.SMOOTH);
                 currentEditor.setCursorAnimationEnabled(true);
                 currentEditor.invalidate();
               },
@@ -336,7 +319,6 @@ public class CssLspLang implements PluginManagerCompat {
     return ".css";
   }
 
-  // کلاس helper برای propertyهای CSS
   static class CssProperty {
     final int line, col;
     final String name;
@@ -364,9 +346,59 @@ public class CssLspLang implements PluginManagerCompat {
 
     List<NameValue> lspList = null;
     private Map<String, Boolean> filePropertiesMap = new HashMap<>();
+    List<CompletionItem> snippetItems = new ArrayList<>();
+    private boolean snippetsLoaded = false;
 
     public CssLsp() {
       loadLspData();
+
+      loadCssSnippets();
+    }
+
+    private void loadCssSnippets() {
+      try {
+        File file = new File("/storage/emulated/0/GhostWebIDE/plugins/csslsp/snippets.json");
+        if (!file.exists()) {
+          Log.e("CssPlugin", "❌ Snippets file not found: " + file.getAbsolutePath());
+          return;
+        }
+
+        Log.d("CssPlugin", "✅ Loading snippets from: " + file.getAbsolutePath());
+
+        StringBuilder content = new StringBuilder();
+        BufferedReader reader = new BufferedReader(new FileReader(file));
+        String line;
+        while ((line = reader.readLine()) != null) {
+          content.append(line);
+        }
+        reader.close();
+
+        JSONObject root = new JSONObject(content.toString());
+        JSONObject css = root.getJSONObject("css");
+        JSONObject snippets = css.getJSONObject("snippets");
+
+        for (Iterator<String> it = snippets.keys(); it.hasNext(); ) {
+          String key = it.next();
+          String rawValue = snippets.getString(key);
+
+          String cleanValue = cleanSnippet(rawValue);
+
+          CompletionItem item = new CompletionItem();
+          item.label = key;
+          item.commit = cleanValue;
+          item.desc = cleanValue;
+          item.cursorOffset(item.commit.length());
+
+          snippetItems.add(item);
+        }
+
+        snippetsLoaded = true;
+        Log.d("CssPlugin", "✨ Loaded " + snippetItems.size() + " snippets");
+
+      } catch (Exception e) {
+        Log.e("CssPlugin", "❌ Error loading CSS snippets: " + e.getMessage());
+        e.printStackTrace();
+      }
     }
 
     private void loadLspData() {
@@ -391,7 +423,6 @@ public class CssLspLang implements PluginManagerCompat {
 
                 String jsonContent = content.toString();
 
-                // چک کردن properties برای این فایل
                 boolean hasProperties = LspContent.hasProperties(jsonContent);
                 filePropertiesMap.put(file.getName(), hasProperties);
 
@@ -404,10 +435,11 @@ public class CssLspLang implements PluginManagerCompat {
             }
 
             lspList = removeDuplicates(lspList);
+            Log.d("CssPlugin", "✅ Loaded " + lspList.size() + " LSP items");
           }
         }
       } catch (Exception e) {
-        Log.e("CssPlugin", "💥 Error loading LSP data");
+        Log.e("CssPlugin", "💥 Error loading LSP data: " + e.getMessage());
       }
     }
 
@@ -424,42 +456,96 @@ public class CssLspLang implements PluginManagerCompat {
       return uniqueList;
     }
 
+    private String cleanSnippet(String raw) {
+      if (raw == null) return "";
+
+      raw = raw.replaceAll("\\$\\{\\d+:[^}]*\\}", "");
+
+      raw = raw.replaceAll("\\$\\{\\d+\\}", "");
+
+      raw = raw.replace("|", "");
+
+      raw = raw.replace("${child}", "");
+
+      raw = raw.replaceAll("\\$\\{[^}]*\\}", "");
+
+      return raw.trim();
+    }
+
     @Override
     public List<CompletionItem> getAutoCompleteItems(
         String prefix, TextAnalyzeResult colors, int line, int column) {
 
       List<CompletionItem> list = new ArrayList<>();
-      if (lspList == null || prefix == null || prefix.isEmpty()) return list;
 
-      for (NameValue it : lspList) {
-        String name = it.getName();
-        if (name != null && name.toLowerCase().contains(prefix.toLowerCase())) {
+      if (prefix == null || prefix.isEmpty()) {
+        return list;
+      }
 
-          CompletionItem item = new CompletionItem();
-          item.label = name;
-
-          // پیدا کن این آیتم از کدوم فایل اومده و چک کن properties داره یا نه
-          boolean isProperty = false;
-          for (String fileName : filePropertiesMap.keySet()) {
-            if (filePropertiesMap.get(fileName)) {
-              isProperty = true;
-              break;
-            }
+      String lowerPrefix = prefix.toLowerCase();
+      Log.d("CssPlugin", "🔍 Searching for: '" + prefix + "'");
+      var jslsp = new JavaScriptAutoCompleter(currentEditor.getContext());
+      list.addAll(jslsp.complete(currentEditor.getText().toString(), line, column, prefix));
+      if (snippetsLoaded) {
+        for (CompletionItem snippet : snippetItems) {
+          if (snippet.label.toLowerCase().startsWith(lowerPrefix)) {
+            list.add(createSnippetItem(snippet));
+            if (list.size() >= 20) break;
           }
-
-          if (isProperty) {
-            item.commit = name + ":";
-          } else {
-            item.commit = name;
-          }
-          item.cursorOffset(item.commit.length());
-          item.desc = !it.getValue().isEmpty() ? it.getValue() : "Doc not found";
-          list.add(item);
-
-          if (list.size() >= 50) break;
         }
       }
+
+      if (lspList != null && list.size() < 20) {
+        for (NameValue lspItem : lspList) {
+          String name = lspItem.getName();
+          if (name != null && name.toLowerCase().contains(lowerPrefix)) {
+            list.add(createLspItem(lspItem));
+            if (list.size() >= 20) break;
+          }
+        }
+      }
+
+      Log.d("CssPlugin", "📦 Found " + list.size() + " items for '" + prefix + "'");
       return list;
     }
+
+    private CompletionItem createSnippetItem(CompletionItem original) {
+      CompletionItem item = new CompletionItem();
+      item.label = original.label;
+      item.commit = original.commit;
+      item.desc = original.desc;
+      item.cursorOffset(item.commit.length());
+      return item;
+    }
+
+    private CompletionItem createLspItem(NameValue lspItem) {
+      CompletionItem item = new CompletionItem();
+      item.label = lspItem.getName();
+
+      boolean isProperty = false;
+      for (boolean hasProps : filePropertiesMap.values()) {
+        if (hasProps) {
+          isProperty = true;
+          break;
+        }
+      }
+
+      if (isProperty) {
+        item.commit = lspItem.getName() + ": ";
+      } else {
+        item.commit = lspItem.getName();
+      }
+
+      item.cursorOffset(item.commit.length());
+      item.desc =
+          lspItem.getValue() != null && !lspItem.getValue().isEmpty()
+              ? lspItem.getValue()
+              : "CSS Property";
+
+      return item;
+    }
   }
+
+  @Override
+  public void getBaseCompat(BaseCompat arg0) {}
 }

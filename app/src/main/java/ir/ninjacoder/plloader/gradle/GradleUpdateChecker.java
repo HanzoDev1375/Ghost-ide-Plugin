@@ -1,11 +1,10 @@
 package ir.ninjacoder.plloader.gradle;
 
-import android.animation.ArgbEvaluator;
-import android.animation.ValueAnimator;
 import android.content.res.ColorStateList;
 import android.graphics.Typeface;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
+import android.text.TextUtils;
 import android.util.Log;
 import android.widget.Button;
 import android.view.Gravity;
@@ -16,7 +15,8 @@ import android.widget.Toast;
 import com.google.android.material.color.MaterialColors;
 import io.github.rosemoe.sora.interfaces.CodeAnalyzer;
 import io.github.rosemoe.sora.langs.groovy.lang.GroovyLanguage;
-import io.github.rosemoe.sora.widget.EditorColorScheme;
+import io.noties.markwon.Markwon;
+import ir.ninjacoder.ghostide.core.activities.BaseCompat;
 import ir.ninjacoder.ghostide.core.utils.ObjectUtils;
 import ir.ninjacoder.plloader.EditorPopUp;
 import android.os.Handler;
@@ -28,12 +28,6 @@ import ir.ninjacoder.ghostide.core.activities.FileManagerActivity;
 import ir.ninjacoder.ghostide.core.pl.PluginManagerCompat;
 import java.lang.reflect.Field;
 import com.google.android.material.tabs.TabLayout;
-import java.util.Random;
-import org.json.JSONObject;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -41,7 +35,6 @@ public class GradleUpdateChecker implements PluginManagerCompat {
 
   private CodeEditor currentEditor;
   private CodeEditorActivity codeEditorActivity;
-  private View progressTooltip;
   private TabLayout tabLayout;
   private boolean isChecking = false, isgradleFile;
   private Handler handler = new Handler(Looper.getMainLooper());
@@ -70,7 +63,7 @@ public class GradleUpdateChecker implements PluginManagerCompat {
 
               String fileType = codeEditorActivity.getcurrentFileType();
 
-              if (fileType != null && fileType.endsWith(".gradle")) {
+              if (fileType != null && fileType.endsWith(".gradle") || fileType.endsWith(".kts")) {
                 Toast.makeText(codeEditorActivity, "gradle Plugin Activated!", Toast.LENGTH_SHORT)
                     .show();
                 applyCustomLanguage();
@@ -78,7 +71,7 @@ public class GradleUpdateChecker implements PluginManagerCompat {
               }
             }
           } catch (Exception e) {
-            Log.e("CssLspPlugin", "Error: " + e.getMessage());
+            Log.e("GradleUpdateChecker", "Error: " + e.getMessage());
           }
         },
         1000);
@@ -86,19 +79,16 @@ public class GradleUpdateChecker implements PluginManagerCompat {
 
   void applyCustomLanguage() {
     try {
-
       var lang =
           new GroovyLanguage() {
-
             @Override
             public CodeAnalyzer getAnalyzer() {
               return new GradleCodeAnalyzer(currentEditor);
             }
           };
       currentEditor.setEditorLanguage(lang);
-
     } catch (Exception err) {
-
+      Log.e("GradleUpdateChecker", "Error applying custom language: " + err.getMessage());
     }
   }
 
@@ -107,10 +97,10 @@ public class GradleUpdateChecker implements PluginManagerCompat {
       if (codeEditorActivity == null) return;
 
       String fileType = codeEditorActivity.getcurrentFileType();
-      isgradleFile = fileType != null && fileType.endsWith(".css");
-      
+      isgradleFile = fileType != null && fileType.endsWith(".gradle") || fileType.endsWith(".kts");
+
     } catch (Exception e) {
-      Log.e("CssLspPlugin", "❌ Error updating file type: " + e.getMessage());
+      Log.e("GradleUpdateChecker", "Error updating file type: " + e.getMessage());
       isgradleFile = false;
     }
   }
@@ -124,7 +114,6 @@ public class GradleUpdateChecker implements PluginManagerCompat {
       tabLayout = (TabLayout) field.get(codeEditorActivity);
 
       if (tabLayout != null) {
-
         tabLayout.addOnTabSelectedListener(
             new TabLayout.OnTabSelectedListener() {
               @Override
@@ -141,7 +130,7 @@ public class GradleUpdateChecker implements PluginManagerCompat {
         updateFileType();
       }
     } catch (Exception e) {
-      Log.e("CssLspPlugin", "❌ Error setting up tab listener: " + e.getMessage());
+      Log.e("GradleUpdateChecker", "❌ Error setting up tab listener: " + e.getMessage());
     }
   }
 
@@ -162,17 +151,12 @@ public class GradleUpdateChecker implements PluginManagerCompat {
               if (checkRunnable != null) {
                 handler.removeCallbacks(checkRunnable);
               }
-
-              // ایجاد درخواست جدید با تاخیر
-              checkRunnable =
-                  () -> {
-                    checkDependencyUpdate(dep);
-                  };
+              checkRunnable = () -> checkDependencyUpdate(dep);
               handler.postDelayed(checkRunnable, 300); // تاخیر 300 میلی‌ثانیه
             }
 
           } catch (Exception e) {
-            // در صورت خطا، درخواست را حذف کن
+
             if (checkRunnable != null) {
               handler.removeCallbacks(checkRunnable);
               checkRunnable = null;
@@ -205,115 +189,67 @@ public class GradleUpdateChecker implements PluginManagerCompat {
   private void checkDependencyUpdate(DependencyInfo dep) {
     if (isChecking) return;
     isChecking = true;
+    RepositoryManager.getLatestVersion(
+        dep.group,
+        dep.artifact,
+        new RepositoryManager.VersionCheckCallback() {
+          @Override
+          public void onVersionFound(String latestVersion) {
+            isChecking = false;
+            if (latestVersion != null && !dep.version.equals(latestVersion)) {
+              showUpdateDialog(dep, latestVersion);
+            } else {
+              showUpToDateMessage(dep);
+            }
+          }
 
-    // اول چک کن اگر در cache آنالایزر هست
-    String cacheKey = dep.group + ":" + dep.artifact;
-    if (GradleCodeAnalyzer.outdatedCache.containsKey(cacheKey)) {
-      isChecking = false;
-      if (GradleCodeAnalyzer.outdatedCache.get(cacheKey)) {
-        String latestVersion = GradleCodeAnalyzer.latestVersions.get(cacheKey);
-        showUpdateDialog(dep, latestVersion);
-      } else {
-        showUpToDateMessage(dep);
-      }
-      return;
-    }
-
-    // اگر در cache نبود، خودت چک کن
-    new Thread(
-            () -> {
-              try {
-                String latestVersion = getLatestVersion(dep.group, dep.artifact);
-
-                new Handler(Looper.getMainLooper())
-                    .post(
-                        () -> {
-                          isChecking = false;
-                          if (latestVersion != null && !dep.version.equals(latestVersion)) {
-                            showUpdateDialog(dep, latestVersion);
-                          } else if (latestVersion != null) {
-                            showUpToDateMessage(dep);
-                          }
-                        });
-              } catch (Exception e) {
-                new Handler(Looper.getMainLooper())
-                    .post(
-                        () -> {
-                          isChecking = false;
-                          Log.e("Error: ", e.getMessage());
-                        });
-              }
-            })
-        .start();
-  }
-
-  private String getLatestVersion(String group, String artifact) throws Exception {
-    String url =
-        String.format(
-            "https://search.maven.org/solrsearch/select?q=g:%s+AND+a:%s&rows=1&wt=json",
-            group, artifact);
-
-    HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-    conn.setRequestMethod("GET");
-    conn.setConnectTimeout(8000);
-    conn.setReadTimeout(8000);
-
-    try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
-      StringBuilder response = new StringBuilder();
-      String line;
-      while ((line = reader.readLine()) != null) {
-        response.append(line);
-      }
-
-      JSONObject json = new JSONObject(response.toString());
-      return json.getJSONObject("response")
-          .getJSONArray("docs")
-          .getJSONObject(0)
-          .getString("latestVersion");
-    } finally {
-      conn.disconnect();
-    }
+          @Override
+          public void onError(String error) {
+            isChecking = false;
+            Log.e("GradleUpdateChecker", "Error: " + error);
+            showTemporaryTooltip(" خطا در بررسی بروزرسانی");
+          }
+        });
   }
 
   private void showUpdateDialog(DependencyInfo dep, String newVersion) {
     if (currentEditor == null) return;
 
     try {
+      Markwon markwon = Markwon.create(currentEditor.getContext());
 
       LinearLayout popupLayout = new LinearLayout(currentEditor.getContext());
       popupLayout.setOrientation(LinearLayout.VERTICAL);
       popupLayout.setPadding(40, 30, 40, 30);
-
       TextView titleView = new TextView(currentEditor.getContext());
-      titleView.setText("📦 Update available");
-      titleView.setTextSize(16);
-      titleView.setTypeface(null, Typeface.BOLD);
-      titleView.setTextColor(Color.parseColor("#1976D2"));
+      markwon.setMarkdown(titleView, "## Update Available");
       titleView.setGravity(Gravity.CENTER);
-
+      titleView.setPadding(0, 0, 0, 20);
       TextView infoView = new TextView(currentEditor.getContext());
-      infoView.setText(
+      infoView.setEllipsize(TextUtils.TruncateAt.END);
+      titleView.setEllipsize(TextUtils.TruncateAt.END);
+      String markdownText =
           String.format(
-              ": %s:%s\n\nCurrent version: %s\nNew version: %s",
-              dep.group, dep.artifact, dep.version, newVersion));
-      infoView.setTextSize(14);
-      infoView.setPadding(0, 20, 0, 30);
-      infoView.setLineSpacing(0, 1.2f);
-
+              "**%s:%s**\n\n" + " **Current:** `%s`\n\n" + " **New:** `%s`\n\n",
+              dep.group, dep.artifact, dep.version, newVersion);
+      markwon.setMarkdown(infoView, markdownText);
+      infoView.setPadding(0, 10, 0, 20);
       LinearLayout buttonLayout = new LinearLayout(currentEditor.getContext());
       buttonLayout.setOrientation(LinearLayout.HORIZONTAL);
       buttonLayout.setGravity(Gravity.CENTER);
 
-      Button updateBtn = new Button(currentEditor.getContext());
-      updateBtn.setText("Update Now");
-      updateBtn.setBackground(get(updateBtn));
+      TextView updateBtn = new TextView(currentEditor.getContext());
+      markwon.setMarkdown(updateBtn, "**Update Now**");
+      GradientDrawable f = new GradientDrawable();
+      f.setColor(Color.GREEN);
+      f.setCornerRadius(50);
+      updateBtn.setBackground(f);
+      updateBtn.setTextColor(Color.BLACK);
       updateBtn.setPadding(40, 15, 40, 15);
-
       LinearLayout.LayoutParams btnParams =
           new LinearLayout.LayoutParams(
-              LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.MATCH_PARENT);
+              LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
       btnParams.setMargins(10, 0, 10, 0);
-
       buttonLayout.addView(updateBtn, btnParams);
 
       popupLayout.addView(titleView);
@@ -322,28 +258,24 @@ public class GradleUpdateChecker implements PluginManagerCompat {
 
       EditorPopUp.showCustomViewAtCursor(currentEditor, popupLayout);
 
-      updateBtn.setOnClickListener(
-          v -> {
-            updateDependency(dep, newVersion);
-          });
+      updateBtn.setOnClickListener(v -> updateDependency(dep, newVersion));
     } catch (Exception e) {
-      e.printStackTrace();
+      Log.e("GradleUpdateChecker", "Error showing update dialog: " + e.getMessage());
     }
   }
 
   private void showUpToDateMessage(DependencyInfo dep) {
     if (currentEditor == null) return;
-
-    showTemporaryTooltip("✅ " + dep.artifact + " It is an update.");
+    showTemporaryTooltip("✅ " + dep.artifact + " is up to date.");
   }
 
   private void showTemporaryTooltip(String message) {
     if (currentEditor == null) return;
 
     try {
-      Toast.makeText(currentEditor.getContext(), message, 2).show();
+      Toast.makeText(currentEditor.getContext(), message, Toast.LENGTH_SHORT).show();
     } catch (Exception e) {
-      e.printStackTrace();
+      Log.e("GradleUpdateChecker", "Error showing tooltip: " + e.getMessage());
     }
   }
 
@@ -359,10 +291,10 @@ public class GradleUpdateChecker implements PluginManagerCompat {
           .replace(
               dep.line, dep.start, dep.line, dep.start + dep.fullMatch.length(), newDependency);
 
-      showTemporaryTooltip("✅ آپدیت انجام شد");
+      showTemporaryTooltip("✅ Update completed");
 
     } catch (Exception e) {
-      Log.e("خطا در آپدیت: ", e.getMessage());
+      Log.e("GradleUpdateChecker", "Error updating dependency: " + e.getMessage());
     }
   }
 
@@ -381,7 +313,7 @@ public class GradleUpdateChecker implements PluginManagerCompat {
 
   @Override
   public String langModel() {
-    return ".gradle";
+    return ".gradle,.kts";
   }
 
   GradientDrawable get(View v) {
@@ -391,4 +323,7 @@ public class GradleUpdateChecker implements PluginManagerCompat {
     dg.setCornerRadius(30);
     return dg;
   }
+
+  @Override
+  public void getBaseCompat(BaseCompat arg0) {}
 }

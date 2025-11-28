@@ -49,5 +49,14 @@ dependencies {
         exclude group: "org.jetbrains", module: "annotations-java5"
     }
     implementation("org.jsoup:jsoup:1.21.1")
+    // https://mvnrepository.com/artifact/org.mozilla/rhino
+    implementation("org.mozilla:rhino:1.8.0")
+    implementation 'io.noties.markwon:core:4.6.2'
     implementation("com.squareup.okhttp3:okhttp:5.0.0-alpha.16")
+    implementation("com.caverock:androidsvg:1.4")
+    implementation 'com.caoccao.javet:swc4j-android-arm:2.0.0'
+    // https://mvnrepository.com/artifact/com.caoccao.javet/swc4j
+implementation 'com.caoccao.javet:swc4j:2.0.0'
+
+   
 }

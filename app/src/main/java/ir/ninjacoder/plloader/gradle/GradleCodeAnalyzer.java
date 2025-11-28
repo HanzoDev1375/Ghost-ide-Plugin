@@ -13,29 +13,14 @@ import io.github.rosemoe.sora.widget.CodeEditor;
 import ir.ninjacoder.codesnap.antlr4.gradle.GradleLexer;
 import java.io.StringReader;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.Token;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-import org.json.JSONObject;
-import java.util.concurrent.TimeUnit;
 
 public class GradleCodeAnalyzer implements CodeAnalyzer {
   TextAnalyzeResult result;
-  private static final OkHttpClient httpClient =
-      new OkHttpClient.Builder()
-          .connectTimeout(10, TimeUnit.SECONDS)
-          .readTimeout(10, TimeUnit.SECONDS)
-          .build();
-
-  public static final Map<String, Boolean> outdatedCache = new HashMap<>();
-  public static final Map<String, String> latestVersions = new HashMap<>();
   private static final List<DependencyInfo> allDependencies = new ArrayList<>();
   private static boolean firstAnalysis = true;
   private CodeEditor editor;
@@ -73,7 +58,6 @@ public class GradleCodeAnalyzer implements CodeAnalyzer {
         }
         line = token.getLine() - 1;
         type = token.getType();
-        String text1 = token.getText();
         column = token.getCharPositionInLine();
         if (type == GradleLexer.EOF) {
           lastLine = line;
@@ -130,25 +114,12 @@ public class GradleCodeAnalyzer implements CodeAnalyzer {
             if (isDependencyString(tokenText)) {
               DependencyInfo dep = extractDependencyFromString(tokenText);
               if (dep != null) {
-                String cacheKey = dep.group + ":" + dep.artifact;
-                boolean shouldHighlight = false;
 
-                if (outdatedCache.containsKey(cacheKey)) {
-                  shouldHighlight = outdatedCache.get(cacheKey);
-                } else {
-                  for (DependencyInfo storedDep : allDependencies) {
-                    if (storedDep.group.equals(dep.group)
-                        && storedDep.artifact.equals(dep.artifact)) {
-                      if (outdatedCache.containsKey(cacheKey)) {
-                        shouldHighlight = outdatedCache.get(cacheKey);
-                      }
-                      break;
-                    }
-                  }
-                }
+                boolean shouldHighlight =
+                    RepositoryManager.isDependencyOutdated(dep.group, dep.artifact, dep.version);
 
                 if (shouldHighlight) {
-                  tryToSpanColor(line, column, token, Color.parseColor("#FFE0B2"));
+                  tryToSpanColor(line, column, token, Color.parseColor("#FFFFE0B2"));
                 } else {
                   result.addIfNeeded(
                       line,
@@ -267,30 +238,25 @@ public class GradleCodeAnalyzer implements CodeAnalyzer {
               if (pretoken == GradleLexer.TASK) {
                 colorNormal = EditorColorScheme.tscolormatch1;
                 isBold = true;
-
               } else if (pretoken == GradleLexer.PROJECT
                   || pretoken == GradleLexer.APPLY
                   || pretoken == GradleLexer.REPOSITORIES
                   || pretoken == GradleLexer.BUILDSCRIPT) {
                 colorNormal = EditorColorScheme.tscolormatch2;
-
               } else if (pretoken == GradleLexer.IMPLEMENTATION
                   || pretoken == GradleLexer.COMPILE_ONLY
                   || pretoken == GradleLexer.RUNTIME_ONLY
                   || pretoken == GradleLexer.TEST_IMPLEMENTATION) {
                 colorNormal = EditorColorScheme.tscolormatch3;
                 isBold = true;
-
               } else if (pretoken == GradleLexer.DEF
                   || pretoken == GradleLexer.CLASS
                   || pretoken == GradleLexer.IMPORT
                   || pretoken == GradleLexer.IMPLEMENTS) {
-
                 colorNormal = EditorColorScheme.tscolormatch4;
               } else if (lexer._input.LA(2) == '{' || lexer._input.LA("{".length()) == '{') {
                 colorNormal = EditorColorScheme.pycolormatch1;
                 isBold = true;
-
               } else if (lexer._input.LA(1) == '.') {
                 colorNormal = EditorColorScheme.pycolormatch2;
               } else if (pretoken == GradleLexer.DOT) {
@@ -339,18 +305,10 @@ public class GradleCodeAnalyzer implements CodeAnalyzer {
                               i, dep.start, dep.group, dep.artifact, dep.version, dep.fullMatch);
                       allDependencies.add(dep);
 
-                      String cacheKey = dep.group + ":" + dep.artifact;
-                      if (!outdatedCache.containsKey(cacheKey)) {
-                        checkDependencyUpdate(dep, cacheKey);
-                      }
+                      // به صورت غیرهمزمان چک کن برای آپدیت‌های آینده
+                      checkDependencyUpdateAsync(dep);
                     }
                   }
-                }
-                if (editor != null) {
-                  editor.post(
-                      () -> {
-                        editor.invalidate();
-                      });
                 }
               } catch (Exception e) {
                 Log.e("GradleAnalyzer", "Error checking all dependencies: " + e.getMessage());
@@ -359,27 +317,23 @@ public class GradleCodeAnalyzer implements CodeAnalyzer {
         .start();
   }
 
-  private void checkDependencyUpdate(DependencyInfo dep, String cacheKey) {
-    try {
-      String latestVersion = getLatestVersionFromMaven(dep.group, dep.artifact);
-      boolean needsUpdate = latestVersion != null && !dep.version.equals(latestVersion);
-      outdatedCache.put(cacheKey, needsUpdate);
-      if (needsUpdate) {
-        latestVersions.put(cacheKey, latestVersion);
-        Log.d(
-            "GradleAnalyzer",
-            "✅ Update available: " + cacheKey + " " + dep.version + " -> " + latestVersion);
-        if (editor != null) {
-          editor.post(
-              () -> {
-                editor.invalidate();
-              });
-        }
-      }
-    } catch (Exception e) {
-      Log.e("GradleAnalyzer", "Error checking dependency: " + e.getMessage());
-      outdatedCache.put(cacheKey, false);
-    }
+  private void checkDependencyUpdateAsync(DependencyInfo dep) {
+    RepositoryManager.getLatestVersion(
+        dep.group,
+        dep.artifact,
+        new RepositoryManager.VersionCheckCallback() {
+          @Override
+          public void onVersionFound(String latestVersion) {
+            if (editor != null && latestVersion != null && !latestVersion.equals(dep.version)) {
+              editor.post(editor::invalidate);
+            }
+          }
+
+          @Override
+          public void onError(String error) {
+            Log.d("GradleAnalyzer", "No update available for: " + dep.group + ":" + dep.artifact);
+          }
+        });
   }
 
   private boolean isDependencyLine(String line) {
@@ -418,31 +372,6 @@ public class GradleCodeAnalyzer implements CodeAnalyzer {
     return null;
   }
 
-  private String getLatestVersionFromMaven(String group, String artifact) {
-    try {
-      String url =
-          String.format(
-              "https://search.maven.org/solrsearch/select?q=g:%s+AND+a:%s&rows=1&wt=json",
-              group, artifact);
-
-      Request request = new Request.Builder().url(url).build();
-
-      try (Response response = httpClient.newCall(request).execute()) {
-        if (response.isSuccessful() && response.body() != null) {
-          String responseBody = response.body().string();
-          JSONObject json = new JSONObject(responseBody);
-          return json.getJSONObject("response")
-              .getJSONArray("docs")
-              .getJSONObject(0)
-              .getString("latestVersion");
-        }
-      }
-    } catch (Exception e) {
-      Log.e("GradleAnalyzer", "Error getting version from Maven: " + e.getMessage());
-    }
-    return null;
-  }
-
   void tryToSpanColor(int line, int column, Token token, int color) {
     Span span =
         Span.obtain(
@@ -450,7 +379,11 @@ public class GradleCodeAnalyzer implements CodeAnalyzer {
             TextStyle.makeStyle(
                 ColorUtils.calculateLuminance(color) > 0.5
                     ? EditorColorScheme.black
-                    : EditorColorScheme.white));
+                    : EditorColorScheme.white,
+                0,
+                false,
+                true,
+                false));
     span.setBackgroundColorMy(color);
     result.add(line, span);
 

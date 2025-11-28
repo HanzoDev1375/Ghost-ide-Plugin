@@ -14,6 +14,7 @@ import io.github.rosemoe.sora.langs.xml.analyzer.Utils;
 import io.github.rosemoe.sora.widget.CodeEditor;
 import io.github.rosemoe.sora.event.SelectionChangeEvent;
 import io.github.rosemoe.sora.widget.EditorColorScheme;
+import ir.ninjacoder.ghostide.core.activities.BaseCompat;
 import ir.ninjacoder.ghostide.core.activities.FileManagerActivity;
 import ir.ninjacoder.ghostide.core.activities.CodeEditorActivity;
 import ir.ninjacoder.ghostide.core.glidecompat.GlideCompat;
@@ -285,4 +286,7 @@ public class AntlrErrorManager implements PluginManagerCompat {
       return this.msg;
     }
   }
+
+  @Override
+  public void getBaseCompat(BaseCompat arg0) {}
 }

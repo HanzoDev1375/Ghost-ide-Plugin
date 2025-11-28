@@ -5,6 +5,7 @@ import io.github.rosemoe.sora.event.ContentChangeEvent;
 import io.github.rosemoe.sora.event.SelectionChangeEvent;
 import io.github.rosemoe.sora.widget.CodeEditor;
 import io.github.rosemoe.sora.widget.EditorColorScheme;
+import ir.ninjacoder.ghostide.core.activities.BaseCompat;
 import ir.ninjacoder.ghostide.core.activities.CodeEditorActivity;
 import ir.ninjacoder.ghostide.core.activities.FileManagerActivity;
 import ir.ninjacoder.ghostide.core.pl.PluginManagerCompat;
@@ -496,4 +497,7 @@ public class ColorRgbCurosr implements PluginManagerCompat {
   public String langModel() {
     return ".css,.html";
   }
+
+  @Override
+  public void getBaseCompat(BaseCompat arg0) {}
 }

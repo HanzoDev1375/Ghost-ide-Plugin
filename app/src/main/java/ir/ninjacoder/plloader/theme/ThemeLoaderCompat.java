@@ -2,6 +2,7 @@ package ir.ninjacoder.plloader.theme;
 
 import android.app.Activity;
 import android.widget.Toast;
+import ir.ninjacoder.ghostide.core.activities.BaseCompat;
 import ir.ninjacoder.ghostide.core.activities.FileManagerActivity;
 import io.github.rosemoe.sora.widget.CodeEditor;
 import ir.ninjacoder.ghostide.core.activities.CodeEditorActivity;
@@ -19,10 +20,10 @@ public class ThemeLoaderCompat implements PluginManagerCompat {
 
   @Override
   public void getFileManagerAc(FileManagerActivity arg0) {
-    loadSavedTheme(arg0);
+    
   }
 
-  private void loadSavedTheme(FileManagerActivity context) {
+  private void loadSavedTheme(BaseCompat context) {
     SharedPreferences prefs = context.getSharedPreferences("name", Context.MODE_PRIVATE);
     String savedTheme = prefs.getString("selected_theme_name", "Swamp Green");
 
@@ -51,5 +52,10 @@ public class ThemeLoaderCompat implements PluginManagerCompat {
   @Override
   public String langModel() {
     return null;
+  }
+
+  @Override
+  public void getBaseCompat(BaseCompat context) {
+    loadSavedTheme(context);
   }
 }
