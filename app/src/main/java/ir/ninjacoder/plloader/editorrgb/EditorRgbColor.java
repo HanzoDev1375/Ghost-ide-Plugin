@@ -207,13 +207,11 @@ public class EditorRgbColor implements PluginManagerCompat {
                   @Override
                   public void onAnimationUpdate(ValueAnimator animator) {
                     int color = (int) animator.getAnimatedValue();
-
-                    // تغییر رنگ‌های ادیتور
                     for (int colorType : targetColors) {
                       editor.getColorScheme().setColor(colorType, color);
                     }
 
-                    // تغییر رنگ تب‌لیاوت (اگر وجود دارد)
+                    
                     if (tabLayout != null) {
                       tabLayout.setTabTextColors(ColorStateList.valueOf(color));
                       tabLayout.setSelectedTabIndicatorColor(color);

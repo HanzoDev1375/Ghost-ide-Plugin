@@ -2,6 +2,8 @@ package ir.php;
 
 import android.graphics.Color;
 import androidx.activity.EdgeToEdge;
+import androidx.core.graphics.ColorUtils;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import io.github.rosemoe.sora.interfaces.AutoCompleteProvider;
 import io.github.rosemoe.sora.interfaces.CodeAnalyzer;
 import io.github.rosemoe.sora.langs.php.PHPLanguage;
@@ -40,6 +42,7 @@ public class BetterPhp implements PluginManagerCompat {
           editor.setEditorLanguage(php);
         },
         1000);
+        androidx.core.graphics.ColorUtils.setAlphaComponent(EditorColorScheme.BLOCK_LINE,128);
     editor.getColorScheme().setColor(EditorColorScheme.aqua, Color.parseColor("#00FFFF"));
     editor.getColorScheme().setColor(EditorColorScheme.azure, Color.parseColor("#F0FFFF"));
     editor.getColorScheme().setColor(EditorColorScheme.beige, Color.parseColor("#F5F5DC"));

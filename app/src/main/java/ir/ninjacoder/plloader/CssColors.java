@@ -3,6 +3,7 @@ package ir.ninjacoder.plloader;
 public class CssColors {
   public static String getJsonColor() {
     return """
+    
     [
   {
     "colorName": "aliceblue",

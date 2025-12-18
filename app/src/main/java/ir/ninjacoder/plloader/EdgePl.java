@@ -1,9 +1,9 @@
 package ir.ninjacoder.plloader;
 
+import android.graphics.drawable.RotateDrawable;
 import android.os.Build;
 import android.view.ViewGroup;
 import android.widget.ImageView;
-import android.view.Gravity;
 import android.view.Window;
 import android.view.View;
 import android.graphics.Color;
@@ -12,7 +12,9 @@ import android.util.TypedValue;
 import android.content.Context;
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.engine.DiskCacheStrategy;
-import ir.ninjacoder.ghostide.core.widget.ExrtaFab;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import ir.ninjacoder.ghostide.core.utils.FileUtil;
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
 import androidx.activity.EdgeToEdge;
 import androidx.core.view.ViewCompat;
@@ -23,16 +25,37 @@ import ir.ninjacoder.ghostide.core.activities.FileManagerActivity;
 import ir.ninjacoder.ghostide.core.activities.CodeEditorActivity;
 import io.github.rosemoe.sora.widget.CodeEditor;
 import ir.ninjacoder.ghostide.core.pl.PluginManagerCompat;
-
+import ir.ninjacoder.ghostide.core.utils.ObjectUtils;
 import java.lang.reflect.Field;
+import android.graphics.drawable.Drawable;
+import android.animation.ValueAnimator;
+import android.animation.ObjectAnimator;
+import android.view.animation.LinearInterpolator;
 
 public class EdgePl implements PluginManagerCompat {
 
   private int originalMarginBottom;
   private int originalMarginTop;
+  private String jsonPath = "/storage/emulated/0/GhostWebIDE/plugins/edge/data/icon.json";
+  protected Gson gson = new GsonBuilder().setPrettyPrinting().create();
+  private ModelIconState state;
   private CoordinatorLayout.LayoutParams originalParams;
   private ImageView imageView; // ذخیره رفرنس ImageView
   private View fab; // ذخیره رفرنس FAB
+  private ValueAnimator fabBackgroundRotationAnimator; // انیمیشن چرخش بک‌گراند FAB
+  private ValueAnimator imageViewRotationAnimator; // انیمیشن چرخش ImageView
+
+  class ModelIconState {
+    protected String iconpath;
+
+    public String getIconpath() {
+      return this.iconpath;
+    }
+
+    public void setIconpath(String iconpath) {
+      this.iconpath = iconpath;
+    }
+  }
 
   @Override
   public void getEditor(CodeEditor arg0) {}
@@ -68,6 +91,7 @@ public class EdgePl implements PluginManagerCompat {
               () -> {
                 adjustFabPosition(codeEditorActivity);
                 setupKeyboardListener(codeEditorActivity);
+                startFabBackgroundAnimation();
               });
     }
   }
@@ -100,15 +124,20 @@ public class EdgePl implements PluginManagerCompat {
         int marginTop = dpToPx(activity, 26);
         int marginHorizontal = dpToPx(activity, 16);
 
+        // ایجاد Drawable چرخشی برای FAB
+        Drawable rotatingDrawable = createRotatingDrawable(activity);
+        fab.setBackground(rotatingDrawable);
+
         params.setMargins(marginHorizontal, marginTop, marginHorizontal, marginBottom);
         fab.post(() -> fab.setLayoutParams(params));
-
-        if (fab.getVisibility() != View.VISIBLE) {
-          fab.setVisibility(View.VISIBLE);
-        }
-
-        // ایجاد ImageView بالای FAB
         createImageViewAboveFab(activity, fab);
+        fab.post(
+            () -> {
+              updateImagePosition();
+              if (imageView != null) {
+                imageView.setVisibility(fab.getVisibility());
+              }
+            });
       }
 
     } catch (Exception e) {
@@ -116,16 +145,73 @@ public class EdgePl implements PluginManagerCompat {
     }
   }
 
+  // متد برای ایجاد Drawable چرخشی
+  private Drawable createRotatingDrawable(Context context) {
+    RotateDrawable rotateDrawable = new RotateDrawable();
+    rotateDrawable.setDrawable(ObjectUtils.getCookieShape());
+    rotateDrawable.setFromDegrees(0f);
+    rotateDrawable.setToDegrees(360f);
+    rotateDrawable.setLevel(0); // شروع از 0
+
+    return rotateDrawable;
+  }
+
+  // شروع انیمیشن چرخش بک‌گراند FAB
+  private void startFabBackgroundAnimation() {
+    if (fab == null) return;
+
+    Drawable background = fab.getBackground();
+    if (background instanceof RotateDrawable) {
+      if (fabBackgroundRotationAnimator != null && fabBackgroundRotationAnimator.isRunning()) {
+        fabBackgroundRotationAnimator.cancel();
+      }
+
+      // ایجاد انیمیشن چرخش
+      fabBackgroundRotationAnimator = ValueAnimator.ofInt(0, 10000);
+      fabBackgroundRotationAnimator.setDuration(10000); // 10 ثانیه برای یک دور کامل
+      fabBackgroundRotationAnimator.setRepeatCount(ValueAnimator.INFINITE);
+      fabBackgroundRotationAnimator.setInterpolator(new LinearInterpolator());
+
+      fabBackgroundRotationAnimator.addUpdateListener(
+          animator -> {
+            if (fab != null && fab.getBackground() instanceof RotateDrawable) {
+              RotateDrawable rotateDrawable = (RotateDrawable) fab.getBackground();
+              int level = (int) animator.getAnimatedValue();
+              rotateDrawable.setLevel(level);
+              fab.invalidate(); // رندر مجدد
+            }
+          });
+
+      fabBackgroundRotationAnimator.start();
+    }
+  }
+
   private void createImageViewAboveFab(CodeEditorActivity activity, View fab) {
     imageView = new ImageView(activity);
     imageView.setId(View.generateViewId());
+    state = gson.fromJson(FileUtil.readFile(jsonPath), ModelIconState.class);
 
-    Glide.with(imageView.getContext())
-        .load("/storage/emulated/0/Download/item1.png")
-        .fitCenter()
-        .diskCacheStrategy(DiskCacheStrategy.NONE)
-        .override(50,50)
-        .into(imageView);
+    if (!FileUtil.isExistFile(jsonPath)) {
+      FileUtil.writeFile(jsonPath, gson.toJson(state));
+    }
+
+    if (state != null && state.getIconpath() != null) {
+      if (state.getIconpath().endsWith(".gif")) {
+        Glide.with(imageView.getContext())
+            .asGif()
+            .load(state.getIconpath())
+            .fitCenter()
+            .diskCacheStrategy(DiskCacheStrategy.NONE)
+            .override(50, 50)
+            .into(imageView);
+      } else
+        Glide.with(imageView.getContext())
+            .load(state.getIconpath())
+            .fitCenter()
+            .diskCacheStrategy(DiskCacheStrategy.NONE)
+            .override(50, 50)
+            .into(imageView);
+    }
 
     int size = dpToPx(activity, 40);
     CoordinatorLayout.LayoutParams p = new CoordinatorLayout.LayoutParams(size, size);
@@ -135,8 +221,28 @@ public class EdgePl implements PluginManagerCompat {
 
     parent.addView(imageView, p);
 
-    // موقعیت اولیه رو تنظیم کن
-    updateImagePosition();
+    // تنظیم visibility اولیه
+    imageView.setVisibility(fab.getVisibility());
+
+    // اضافه کردن listener برای رصد تغییرات
+    fab.addOnAttachStateChangeListener(
+        new View.OnAttachStateChangeListener() {
+          @Override
+          public void onViewAttachedToWindow(View v) {
+            // وقتی فب attach میشه
+            if (imageView != null) {
+              imageView.setVisibility(fab.getVisibility());
+            }
+          }
+
+          @Override
+          public void onViewDetachedFromWindow(View v) {
+            // وقتی فب detach میشه
+            if (imageView != null) {
+              imageView.setVisibility(View.GONE);
+            }
+          }
+        });
   }
 
   // متد برای آپدیت موقعیت ImageView
@@ -151,7 +257,6 @@ public class EdgePl implements PluginManagerCompat {
           int fabY = (int) (fab.getY() - size - dpToPx(imageView.getContext(), -3)); // حتی پایین‌تر
           imageView.setX(fabX);
           imageView.setY(fabY);
-          
         });
   }
 
@@ -213,12 +318,14 @@ public class EdgePl implements PluginManagerCompat {
                       params.rightMargin,
                       originalMarginBottom);
                 }
-
                 fab.post(
                     () -> {
                       fab.setLayoutParams(params);
-                      // موقعیت ImageView رو هم آپدیت کن
                       updateImagePosition();
+                      // اضافه کردن این خط
+                      if (imageView != null) {
+                        imageView.setVisibility(fab.getVisibility());
+                      }
                     });
               }
             } catch (Exception e) {
@@ -244,5 +351,16 @@ public class EdgePl implements PluginManagerCompat {
     return (int)
         TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP, dp, context.getResources().getDisplayMetrics());
+  }
+
+  // متد برای پاکسازی انیمیشن‌ها
+  public void cleanupAnimations() {
+    if (fabBackgroundRotationAnimator != null && fabBackgroundRotationAnimator.isRunning()) {
+      fabBackgroundRotationAnimator.cancel();
+    }
+
+    if (imageViewRotationAnimator != null && imageViewRotationAnimator.isRunning()) {
+      imageViewRotationAnimator.cancel();
+    }
   }
 }

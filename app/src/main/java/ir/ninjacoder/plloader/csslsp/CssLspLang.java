@@ -1,5 +1,6 @@
 package ir.ninjacoder.plloader.csslsp;
 
+import android.content.Context;
 import android.widget.Toast;
 import android.util.Log;
 import io.github.rosemoe.sora.data.CompletionItem;
@@ -108,7 +109,11 @@ public class CssLspLang implements PluginManagerCompat {
       currentEditor.removeLineIcon(1);
       currentEditor.removeLineIcon(2);
       Log.d("CssLspPlugin", "📁 File type: " + fileType + " - isCssFile: " + isCssFile);
-
+      //      currentEditor.postDelayed(
+      //          () -> {
+      //            new NodeTerminal().show(codeEditorActivity.getSupportFragmentManager(), null);
+      //          },
+      //          1000);
     } catch (Exception e) {
       Log.e("CssLspPlugin", "❌ Error updating file type: " + e.getMessage());
       isCssFile = false;
@@ -265,7 +270,7 @@ public class CssLspLang implements PluginManagerCompat {
     }
 
     try {
-      cssLsp = new CssLsp();
+      cssLsp = new CssLsp(codeEditorActivity, currentEditor);
       applyStylingChanges();
       var customLang =
           new CSS3Language((IdeEditor) currentEditor) {
@@ -277,6 +282,22 @@ public class CssLspLang implements PluginManagerCompat {
             @Override
             public CodeAnalyzer getAnalyzer() {
               return new CSS3Analyzer(editor);
+            }
+
+            @Override
+            public boolean isAutoCompleteChar(char ch) {
+              return Character.isDigit(ch)
+                  || Character.isLetterOrDigit(ch)
+                  || ch == '*'
+                  || ch == '>';
+            }
+
+            @Override
+            public CharSequence format(CharSequence arg0) {
+              var css = new CSSBeautifier(editor.getContext());
+              if (css.isReady()) {
+                return css.beautify(arg0.toString());
+              } else return arg0;
             }
           };
 
@@ -292,18 +313,6 @@ public class CssLspLang implements PluginManagerCompat {
   private void applyStylingChanges() {
     if (currentEditor == null) return;
     currentEditor.setCursorAnimationEnabled(false);
-
-    currentEditor.post(
-        () -> {
-          currentEditor.setDividerWidth(3f);
-          currentEditor.setDividerMargin(49f);
-          currentEditor.postDelayed(
-              () -> {
-                currentEditor.setCursorAnimationEnabled(true);
-                currentEditor.invalidate();
-              },
-              300);
-        });
   }
 
   @Override
@@ -348,11 +357,23 @@ public class CssLspLang implements PluginManagerCompat {
     private Map<String, Boolean> filePropertiesMap = new HashMap<>();
     List<CompletionItem> snippetItems = new ArrayList<>();
     private boolean snippetsLoaded = false;
+    private JavaScriptAutoCompleter emmetCompleter;
+    private CodeEditor currentEditor;
 
-    public CssLsp() {
+    public CssLsp(Context context, CodeEditor editor) {
+      this.currentEditor = editor;
       loadLspData();
-
       loadCssSnippets();
+      initEmmetCompleter(context);
+    }
+
+    private void initEmmetCompleter(Context context) {
+      try {
+        emmetCompleter = new JavaScriptAutoCompleter(context);
+        Log.d("CssPlugin", "✅ Emmet completer initialized");
+      } catch (Exception e) {
+        Log.e("CssPlugin", "❌ Failed to init Emmet: " + e.getMessage());
+      }
     }
 
     private void loadCssSnippets() {
@@ -460,16 +481,25 @@ public class CssLspLang implements PluginManagerCompat {
       if (raw == null) return "";
 
       raw = raw.replaceAll("\\$\\{\\d+:[^}]*\\}", "");
-
       raw = raw.replaceAll("\\$\\{\\d+\\}", "");
-
       raw = raw.replace("|", "");
-
       raw = raw.replace("${child}", "");
-
       raw = raw.replaceAll("\\$\\{[^}]*\\}", "");
 
       return raw.trim();
+    }
+
+    private int getCursorOffset(CodeEditor editor, int line, int column) {
+      try {
+        int offset = 0;
+        for (int i = 0; i < line; i++) {
+          offset += editor.getText().getLineString(i).length() + 1; // +1 for newline
+        }
+        offset += column;
+        return offset;
+      } catch (Exception e) {
+        return 0;
+      }
     }
 
     @Override
@@ -482,10 +512,34 @@ public class CssLspLang implements PluginManagerCompat {
         return list;
       }
 
+      // ۱. اول Emmet را بررسی کن
+      List<CompletionItem> emmetItems = getEmmetCompletions(line, column);
+      if (!emmetItems.isEmpty()) {
+        // اگر Emmet مخففی یافت، آن را نشان بده
+        list.addAll(emmetItems);
+        Log.d("CssPlugin", "🎯 Emmet abbreviation found");
+        return list;
+      }
+
+      // ۲. CSS Language Service
+      try {
+        CSSLanguageService cssService = new CSSLanguageService(currentEditor.getContext());
+        if (cssService.isReady()) {
+          String currentText = currentEditor.getText().toString();
+          int cursorOffset = getCursorOffset(currentEditor, line, column);
+
+          List<CompletionItem> cssCompletions = cssService.doComplete(currentText, cursorOffset);
+          list.addAll(cssCompletions);
+
+          cssService.destroy();
+        }
+      } catch (Exception e) {
+        Log.e("CssPlugin", "❌ CSS Language Service error: " + e.getMessage());
+      }
+
+      // ۳. Snippets
       String lowerPrefix = prefix.toLowerCase();
       Log.d("CssPlugin", "🔍 Searching for: '" + prefix + "'");
-      var jslsp = new JavaScriptAutoCompleter(currentEditor.getContext());
-      list.addAll(jslsp.complete(currentEditor.getText().toString(), line, column, prefix));
       if (snippetsLoaded) {
         for (CompletionItem snippet : snippetItems) {
           if (snippet.label.toLowerCase().startsWith(lowerPrefix)) {
@@ -495,6 +549,7 @@ public class CssLspLang implements PluginManagerCompat {
         }
       }
 
+      // ۴. LSP Data
       if (lspList != null && list.size() < 20) {
         for (NameValue lspItem : lspList) {
           String name = lspItem.getName();
@@ -507,6 +562,96 @@ public class CssLspLang implements PluginManagerCompat {
 
       Log.d("CssPlugin", "📦 Found " + list.size() + " items for '" + prefix + "'");
       return list;
+    }
+
+    /** تکمیل‌کننده Emmet - با کل خط کار می‌کند */
+    private List<CompletionItem> getEmmetCompletions(int line, int column) {
+      List<CompletionItem> items = new ArrayList<>();
+
+      if (emmetCompleter == null || currentEditor == null) {
+        return items;
+      }
+
+      try {
+        // گرفتن کل خط جاری
+        String lineText = currentEditor.getText().getLineString(line);
+
+        // بررسی اگر خط خالی است
+        if (lineText == null || lineText.trim().isEmpty()) {
+          return items;
+        }
+
+        // استفاده از Emmet برای استخراج مخفف
+        List<CompletionItem> emmetItems = emmetCompleter.complete(lineText, column);
+
+        // اگر Emmet مخففی پیدا کرد
+        if (!emmetItems.isEmpty()) {
+          // علامت‌گذاری آیتم‌های Emmet
+          for (CompletionItem item : emmetItems) {
+            // تغییر label برای تشخیص
+            String originalLabel = item.label;
+            item.label = "⚡ " + originalLabel;
+
+            // اضافه کردن توضیح
+            if (item.desc == null || item.desc.isEmpty()) {
+              item.desc = "Emmet abbreviation";
+            }
+          }
+          items.addAll(emmetItems);
+        }
+
+      } catch (Exception e) {
+        Log.e("CssPlugin", "❌ Emmet completion error: " + e.getMessage());
+      }
+
+      return items;
+    }
+
+    /** برای گسترش Emmet با کلید Tab */
+    public boolean handleTabKey() {
+      if (emmetCompleter == null || currentEditor == null) {
+        return false;
+      }
+
+      try {
+        var cursor = currentEditor.getCursor();
+        int line = cursor.getLeftLine();
+        int column = cursor.getLeftColumn();
+        String lineText = currentEditor.getText().getLineString(line);
+
+        // بررسی آیا مخفف Emmet وجود دارد
+        if (emmetCompleter.hasEmmetAbbreviation(lineText, column)) {
+          
+          var abbreviation = emmetCompleter.expandAbbreviation(lineText);
+          if (abbreviation != null && !abbreviation.isEmpty()) {
+            String expanded = emmetCompleter.expandAbbreviation(abbreviation);
+
+            if (!expanded.isEmpty()) {
+              // یافتن موقعیت مخفف در خط
+              int abbreviationStart = lineText.lastIndexOf(abbreviation, column);
+              if (abbreviationStart >= 0) {
+                // جایگزینی مخفف با کد گسترش‌یافته
+                currentEditor
+                    .getText()
+                    .delete(
+                        line, abbreviationStart, line, abbreviationStart + abbreviation.length());
+                currentEditor.getText().insert(line, abbreviationStart, expanded);
+
+                // تنظیم کرسر در انتهای کد درج شده
+                int newColumn = abbreviationStart + expanded.length();
+                currentEditor.setSelection(line, newColumn);
+
+                Log.d("CssPlugin", "✨ Expanded Emmet: " + abbreviation + " → " + expanded);
+                return true;
+              }
+            }
+          }
+        }
+      } catch (Exception e) {
+        Log.e("CssPlugin", "❌ Error expanding Emmet: " + e.getMessage());
+      }
+
+      return false;
     }
 
     private CompletionItem createSnippetItem(CompletionItem original) {
@@ -543,6 +688,26 @@ public class CssLspLang implements PluginManagerCompat {
               : "CSS Property";
 
       return item;
+    }
+
+    /** تمیز کردن منابع */
+    public void destroy() {
+      if (emmetCompleter != null) {
+        emmetCompleter.destroy();
+        emmetCompleter = null;
+      }
+
+      if (snippetItems != null) {
+        snippetItems.clear();
+      }
+
+      if (lspList != null) {
+        lspList.clear();
+      }
+
+      filePropertiesMap.clear();
+
+      Log.d("CssPlugin", "🧹 CssLsp resources cleaned up");
     }
   }
 

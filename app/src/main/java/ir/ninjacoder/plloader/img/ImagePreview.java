@@ -1,17 +1,21 @@
 package ir.ninjacoder.plloader.img;
 
+import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 import com.bumptech.glide.Glide;
 import com.google.android.material.card.MaterialCardView;
+import com.google.gson.reflect.TypeToken;
+import io.github.rosemoe.sora.event.ContentChangeEvent;
+import java.util.List;
+import com.google.gson.Gson;
 import io.github.rosemoe.sora.event.SelectionChangeEvent;
-import io.github.rosemoe.sora.langs.html.HTMLLanguage;
 import io.github.rosemoe.sora.widget.CodeEditor;
 import io.github.rosemoe.sora.widget.EditorColorScheme;
-import ir.ninjacoder.ghostide.core.IdeEditor;
 import ir.ninjacoder.ghostide.core.activities.BaseCompat;
 import ir.ninjacoder.ghostide.core.activities.CodeEditorActivity;
 import ir.ninjacoder.ghostide.core.activities.FileManagerActivity;
@@ -19,12 +23,11 @@ import ir.ninjacoder.ghostide.core.pl.PluginManagerCompat;
 import ir.ninjacoder.plloader.EditorPopUp;
 import java.io.File;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import com.google.android.material.tabs.TabLayout;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
+import java.util.HashSet;
 
 public class ImagePreview implements PluginManagerCompat {
 
@@ -38,6 +41,12 @@ public class ImagePreview implements PluginManagerCompat {
   private String lastImagePath = "";
   private boolean isHtmlFile = false;
   private TabLayout tabLayout;
+  private HashSet<Integer> linesWithIcons = new HashSet<>();
+  private String lastProcessedFilePath = "";
+
+  // آیکون پیش‌فرض برای نمایش
+  private static final String DEFAULT_IMAGE_ICON = "ic_image_icon.png"; // مسیر آیکون در assets
+  private static final int IMAGE_ICON_COLOR_FILTER = 0;
 
   private static final Pattern IMAGE_PATH_PATTERN =
       Pattern.compile(
@@ -61,8 +70,23 @@ public class ImagePreview implements PluginManagerCompat {
             if (editor.getContext() instanceof CodeEditorActivity) {
               codeEditorActivity = (CodeEditorActivity) editor.getContext();
               setupTabChangeListener();
-              updateFileType(); // اولین بار فایل تایپ رو چک کن
+              updateFileType();
               setupEventListeners(editor);
+              scanAndAddIconsForAllLines(editor);
+              int lineCount = editor.getLineCount();
+              float mergingsize;
+              if (lineCount > 1000) {
+                mergingsize = 10;
+              } else if (lineCount > 100) {
+                mergingsize = 8.2f;
+              } else if (lineCount > 10) {
+                mergingsize = 7.3f;
+              } else if (lineCount > 5) {
+                mergingsize = 5.1f;
+              } else {
+                mergingsize = 1.0f;
+              }
+              editor.setDividerMargin(mergingsize);
             }
           } catch (Exception e) {
             e.printStackTrace();
@@ -75,7 +99,6 @@ public class ImagePreview implements PluginManagerCompat {
     try {
       if (codeEditorActivity == null) return;
 
-      // پیدا کردن TabLayout با ریفلکشن
       Field field = codeEditorActivity.getClass().getDeclaredField("tablayouteditor");
       field.setAccessible(true);
       tabLayout = (TabLayout) field.get(codeEditorActivity);
@@ -85,8 +108,10 @@ public class ImagePreview implements PluginManagerCompat {
             new TabLayout.OnTabSelectedListener() {
               @Override
               public void onTabSelected(TabLayout.Tab tab) {
-                // وقتی تب عوض شد، فایل تایپ رو آپدیت کن
                 updateFileType();
+                if (currentEditor != null) {
+                  scanAndAddIconsForAllLines(currentEditor);
+                }
               }
 
               @Override
@@ -105,17 +130,19 @@ public class ImagePreview implements PluginManagerCompat {
     try {
       if (codeEditorActivity == null) return;
 
-      // استفاده از متد getcurrentFileType که در CodeEditorActivity هست
-      Method method = codeEditorActivity.getClass().getMethod("getcurrentFileType");
-      String fileType = (String) method.invoke(codeEditorActivity);
+      String fileType = codeEditorActivity.getcurrentFileType();
+      boolean wasHtmlFile = isHtmlFile;
+      isHtmlFile = fileType != null && (fileType.endsWith(".html") || fileType.endsWith(".htm"));
 
-      isHtmlFile = fileType != null && (fileType.endsWith(".html"));
-
-      // اگر فایل HTML شد، زبان رو ست کن
-      if (isHtmlFile && currentEditor != null) {
+      if (currentEditor != null) {
         currentEditor.post(
             () -> {
               try {
+                if (isHtmlFile) {
+                  scanAndAddIconsForAllLines(currentEditor);
+                } else {
+                  removeAllIcons();
+                }
                 currentEditor.invalidate();
               } catch (Exception e) {
                 e.printStackTrace();
@@ -128,11 +155,127 @@ public class ImagePreview implements PluginManagerCompat {
     }
   }
 
+  private void scanAndAddIconsForAllLines(CodeEditor editor) {
+    try {
+      if (!isHtmlFile || editor == null) {
+        removeAllIcons();
+        return;
+      }
+
+      removeAllIcons();
+      linesWithIcons.clear();
+
+      String text = editor.getText().toString();
+      String[] lines = text.split("\n");
+
+      for (int i = 0; i < lines.length; i++) {
+        String line = lines[i];
+        if (containsImagePath(line)) {
+          addIconToLine(editor, i, line);
+        }
+      }
+
+      editor.invalidate();
+
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+
+  private boolean containsImagePath(String lineText) {
+    if (lineText == null || lineText.isEmpty()) {
+      return false;
+    }
+
+    Matcher matcher = IMAGE_PATH_PATTERN.matcher(lineText);
+    while (matcher.find()) {
+      String foundPath = matcher.group();
+      String cleanedPath = cleanImagePath(foundPath);
+      if (isValidImagePath(cleanedPath)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private void addIconToLine(CodeEditor editor, int lineNumber, String lineText) {
+    try {
+      // پیدا کردن اولین مسیر تصویر در خط
+      Matcher matcher = IMAGE_PATH_PATTERN.matcher(lineText);
+      while (matcher.find()) {
+        String foundPath = matcher.group();
+        String cleanedPath = cleanImagePath(foundPath);
+
+        if (isValidImagePath(cleanedPath)) {
+          String fullPath = resolveFilePath(cleanedPath);
+          if (fullPath != null && new File(fullPath).exists()) {
+
+            editor.setLineNumberAlign(Paint.Align.LEFT);
+            editor.addLineIcons(lineNumber + 1, IMAGE_ICON_COLOR_FILTER, fullPath, true);
+            linesWithIcons.add(lineNumber);
+            break;
+          }
+        }
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+
+  private void removeAllIcons() {
+    try {
+      if (currentEditor != null) {
+        for (int lineNumber : linesWithIcons) {
+          try {
+            currentEditor.removeLineIcon(lineNumber + 1);
+          } catch (Exception e) {
+            // ignore
+          }
+        }
+        linesWithIcons.clear();
+        currentEditor.invalidate();
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+
   private void setupEventListeners(CodeEditor editor) {
-    // ذخیره رنگ اصلی کرسر
     originalCursorColor = editor.getColorScheme().getColor(EditorColorScheme.SELECTION_INSERT);
 
-    // تنظیم image preview event
+    editor.subscribeEvent(
+        ContentChangeEvent.class,
+        (event, unsubscribe) -> {
+          if (!isHtmlFile) return;
+
+          editor.postDelayed(
+              () -> {
+                int lineCount = editor.getLineCount();
+                float mergingsize;
+                if (lineCount > 1000) {
+                  mergingsize = 10;
+                } else if (lineCount > 100) {
+                  mergingsize = 8.2f;
+                } else if (lineCount > 10) {
+                  mergingsize = 7.3f;
+                } else if (lineCount > 5) {
+                  mergingsize = 5.1f;
+                } else {
+                  mergingsize = 1.0f;
+                }
+
+                editor.setDividerMargin(mergingsize);
+              },
+              400);
+          editor.postDelayed(
+              () -> {
+                scanAndAddIconsForAllLines(editor);
+              },
+              300);
+        });
+
+    // لیسنر برای حرکت کرسر (همانند قبل)
     editor.subscribeEvent(
         SelectionChangeEvent.class,
         (event, unsubscribe) -> {
@@ -145,10 +288,8 @@ public class ImagePreview implements PluginManagerCompat {
           lastProcessTime = currentTime;
 
           try {
-            // هر بار چک کن که فایل هنوز HTML هست یا نه
             updateFileType();
 
-            // فقط برای فایل‌های HTML پردازش کن
             if (!isHtmlFile) {
               restoreOriginalCursorColor();
               return;
@@ -176,13 +317,11 @@ public class ImagePreview implements PluginManagerCompat {
 
   private void showImagePreview(CodeEditor editor, String filePath) {
     try {
-      // دوباره چک کن که فایل هنوز HTML هست
       if (!isHtmlFile) return;
 
       String fullPath = resolveFilePath(filePath);
 
       if (fullPath != null && new File(fullPath).exists()) {
-        // ایجاد ImageView
         MaterialCardView cardView = new MaterialCardView(editor.getContext());
         MaterialCardView.LayoutParams cardParams =
             new MaterialCardView.LayoutParams(
@@ -295,17 +434,15 @@ public class ImagePreview implements PluginManagerCompat {
     try {
       if (codeEditorActivity == null) return null;
 
-      android.content.SharedPreferences shp =
+      SharedPreferences shp =
           codeEditorActivity.getSharedPreferences("shp", android.content.Context.MODE_PRIVATE);
       if (!shp.contains("path")) return null;
 
       String pathJson = shp.getString("path", "");
       if (pathJson.isEmpty()) return null;
 
-      java.lang.reflect.Type type =
-          new com.google.gson.reflect.TypeToken<ArrayList<HashMap<String, Object>>>() {}.getType();
-      ArrayList<HashMap<String, Object>> tabsList =
-          new com.google.gson.Gson().fromJson(pathJson, type);
+      var type = new TypeToken<List<HashMap<String, Object>>>() {}.getType();
+      List<HashMap<String, Object>> tabsList = new Gson().fromJson(pathJson, type);
 
       if (tabsList == null || tabsList.isEmpty()) return null;
 
@@ -374,7 +511,7 @@ public class ImagePreview implements PluginManagerCompat {
 
   @Override
   public String setName() {
-    return "Image Preview";
+    return "Image Preview with Icons";
   }
 
   @Override
@@ -395,5 +532,8 @@ public class ImagePreview implements PluginManagerCompat {
   }
 
   @Override
-  public void getBaseCompat(BaseCompat arg0) {}
+  public void getBaseCompat(BaseCompat base) {
+    
+  }
+
 }
