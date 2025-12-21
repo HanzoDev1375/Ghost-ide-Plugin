@@ -1,4 +1,4 @@
-package ir.ninjacoder.json5.editor;
+package ir.ninjacoder.json;
 
 import androidx.core.graphics.ColorUtils;
 import io.github.rosemoe.sora.data.Span;
@@ -38,7 +38,7 @@ public class CodeAz implements CodeAnalyzer {
   public void analyze(CharSequence content, TextAnalyzeResult result, Delegate del) {
     try {
       this.result = result;
-      var lexer = new JSON5Lexer(CharStreams.fromReader(new StringReader(content.toString())));
+      var lexer = new JsonLexerLexer(CharStreams.fromReader(new StringReader(content.toString())));
       helper = new RainbowBracketHelper("");
       Token token;
       state = ParseState.NORMAL;
@@ -59,28 +59,22 @@ public class CodeAz implements CodeAnalyzer {
         Log.d(
             "JSON5Debug",
             "Token: "
-                + JSON5Lexer.VOCABULARY.getSymbolicName(type)
+                + JsonLexerLexer.VOCABULARY.getSymbolicName(type)
                 + " Text: '"
                 + token.getText()
                 + "' State: "
                 + state);
 
         switch (type) {
-          case JSON5Lexer.WS:
+          case JsonLexerLexer.WS:
             break;
-
-          case JSON5Lexer.SINGLE_LINE_COMMENT:
-          case JSON5Lexer.MULTI_LINE_COMMENT:
-            result.addIfNeeded(line, column, EditorColorScheme.COMMENT);
-            break;
-
-          case JSON5Lexer.LCURLY:
+          case JsonLexerLexer.LCURLY:
             helper.handleOpenBracket(result, line, column, true);
             braceStack.push(type);
             state = ParseState.IN_OBJECT_KEY; // وارد object شدیم، منتظر key هستیم
             break;
 
-          case JSON5Lexer.RCURLY:
+          case JsonLexerLexer.RCURLY:
             helper.handleCloseBracket(result, line, column, true);
             if (!braceStack.isEmpty()) {
               braceStack.pop();
@@ -88,15 +82,15 @@ public class CodeAz implements CodeAnalyzer {
             state = ParseState.NORMAL;
             break;
 
-          case JSON5Lexer.LBRACKET:
-          case JSON5Lexer.LPAREN:
+          case JsonLexerLexer.LBRACKET:
+          case JsonLexerLexer.LPAREN:
             helper.handleOpenBracket(result, line, column, false);
             braceStack.push(type);
             state = ParseState.IN_ARRAY_VALUE; // وارد array شدیم، منتظر value هستیم
             break;
 
-          case JSON5Lexer.RBRACKET:
-          case JSON5Lexer.RPAREN:
+          case JsonLexerLexer.RBRACKET:
+          case JsonLexerLexer.RPAREN:
             helper.handleCloseBracket(result, line, column, false);
             if (!braceStack.isEmpty()) {
               braceStack.pop();
@@ -104,28 +98,28 @@ public class CodeAz implements CodeAnalyzer {
             state = ParseState.NORMAL;
             break;
 
-          case JSON5Lexer.COLON:
+          case JsonLexerLexer.COLON:
             result.addIfNeeded(line, column, EditorColorScheme.javaoprator);
             if (state == ParseState.IN_OBJECT_KEY) {
               state = ParseState.AFTER_COLON; // بعد از colon منتظر value هستیم
             }
             break;
 
-          case JSON5Lexer.COMMA:
+          case JsonLexerLexer.COMMA:
             result.addIfNeeded(line, column, EditorColorScheme.javaoprator);
             if (!braceStack.isEmpty()) {
-              if (braceStack.peek() == JSON5Lexer.LCURLY) {
+              if (braceStack.peek() == JsonLexerLexer.LCURLY) {
                 // در object هستیم، بعد از کاما منتظر key جدید هستیم
                 state = ParseState.IN_OBJECT_KEY;
-              } else if (braceStack.peek() == JSON5Lexer.LBRACKET) {
+              } else if (braceStack.peek() == JsonLexerLexer.LBRACKET) {
                 // در array هستیم، بعد از کاما منتظر value جدید هستیم
                 state = ParseState.IN_ARRAY_VALUE;
               }
             }
             break;
 
-          case JSON5Lexer.STRING:
-          case JSON5Lexer.HEXCOLOR:
+          case JsonLexerLexer.STRING:
+          case JsonLexerLexer.HEXCOLOR:
             if (state == ParseState.AFTER_COLON) {
               // این string یک VALUE است
               result.addIfNeeded(line, column, EditorColorScheme.javastring);
@@ -138,8 +132,8 @@ public class CodeAz implements CodeAnalyzer {
 
               result.addIfNeeded(line, column, EditorColorScheme.javastring);
             }
-            
-            if (token.getType() == JSON5Lexer.STRING) {
+
+            if (token.getType() == JsonLexerLexer.STRING) {
 
               String raw = token.getText();
 
@@ -160,19 +154,12 @@ public class CodeAz implements CodeAnalyzer {
                     }
                   }
                 }
-
-                // --- RGB / RGBA ---
-                // --- RGB / RGBA ---
                 Integer rgb = parseRgbColor(inner);
                 if (rgb != null && (inner.startsWith("rgb(") || inner.startsWith("rgba("))) {
 
                   result.addIfNeeded(line, column, EditorColorScheme.javastring);
 
-                  spanRgbValuesOnly(
-                      line,
-                      column + 1,
-                      inner,
-                      rgb);
+                  spanRgbValuesOnly(line, column + 1, inner, rgb);
                   break;
                 }
                 Integer hsl = parseHslColor(inner);
@@ -180,11 +167,7 @@ public class CodeAz implements CodeAnalyzer {
 
                   result.addIfNeeded(line, column, EditorColorScheme.javastring);
 
-                  spanRgbValuesOnly(
-                      line,
-                      column + 1,
-                      inner,
-                      hsl);
+                  spanRgbValuesOnly(line, column + 1, inner, hsl);
                   break;
                 }
               }
@@ -194,7 +177,7 @@ public class CodeAz implements CodeAnalyzer {
             }
             break;
 
-          case JSON5Lexer.NUMBER:
+          case JsonLexerLexer.NUMBER:
             if (state == ParseState.AFTER_COLON) {
               // عدد به عنوان VALUE
               result.addIfNeeded(line, column, EditorColorScheme.javanumber);
@@ -209,8 +192,7 @@ public class CodeAz implements CodeAnalyzer {
             }
             break;
 
-          case JSON5Lexer.LITERAL:
-          case JSON5Lexer.NUMERIC_LITERAL:
+          case JsonLexerLexer.LITERAL:
             if (state == ParseState.AFTER_COLON) {
               // literal به عنوان VALUE
               result.addIfNeeded(line, column, EditorColorScheme.javakeyword);
@@ -225,7 +207,7 @@ public class CodeAz implements CodeAnalyzer {
             }
             break;
 
-          case JSON5Lexer.IDENTIFIER:
+          case JsonLexerLexer.IDENTIFIER:
             if (state == ParseState.AFTER_COLON) {
               // identifier به عنوان VALUE
               result.addIfNeeded(line, column, EditorColorScheme.TEXT_NORMAL);
@@ -240,7 +222,7 @@ public class CodeAz implements CodeAnalyzer {
             }
             break;
 
-          case JSON5Lexer.SYMBOL:
+          case JsonLexerLexer.SYMBOL:
             result.addIfNeeded(line, column, EditorColorScheme.javaoprator);
             break;
 
@@ -252,20 +234,20 @@ public class CodeAz implements CodeAnalyzer {
 
       result.determine(lexer.getLine() - 1);
       CommonTokenStream stream = new CommonTokenStream(lexer);
-      var parser = new JSON5Parser(stream);
+      var parser = new JsonLexerParser(stream);
       parser.removeErrorListeners();
       var loader =
-          new JSON5BaseListener() {
+          new JsonLexerBaseListener() {
             @Override
             public void visitErrorNode(ErrorNode node) {
               Utils.setErrorSpan(
                   result, node.getSymbol().getLine(), node.getSymbol().getCharPositionInLine());
             }
           };
-      ParseTreeWalker.DEFAULT.walk(loader, parser.json5());
+      ParseTreeWalker.DEFAULT.walk(loader, parser.json());
 
     } catch (Exception err) {
-      Log.e("JSON5Analyzer", "Error in analyze", err);
+      Log.e("JSONAnalyzer", "Error in analyze", err);
     }
   }
 
@@ -284,12 +266,12 @@ public class CodeAz implements CodeAnalyzer {
     span.setBackgroundColorMy(color);
     result.add(line, span);
 
-    Span middle = Span.obtain(column + token.length(), EditorColorScheme.TEXT_NORMAL);
+    Span middle = Span.obtain(column + token.length(), EditorColorScheme.javastring);
     middle.setBackgroundColorMy(Color.TRANSPARENT);
     result.add(line, middle);
 
     Span end =
-        Span.obtain(column + token.length(), TextStyle.makeStyle(EditorColorScheme.TEXT_NORMAL));
+        Span.obtain(column + token.length(), TextStyle.makeStyle(EditorColorScheme.javastring));
     end.setBackgroundColorMy(Color.TRANSPARENT);
     result.add(line, end);
   }

@@ -119,7 +119,11 @@ public class GradleCodeAnalyzer implements CodeAnalyzer {
                     RepositoryManager.isDependencyOutdated(dep.group, dep.artifact, dep.version);
 
                 if (shouldHighlight) {
-                  tryToSpanColor(line, column, token, Color.parseColor("#FFFFE0B2"));
+                  result.addIfNeeded(
+                      line,
+                      column,
+                      TextStyle.makeStyle(EditorColorScheme.javastring, 0, true, false, false));
+                  tryToSpanDependency(line, column, token, Color.parseColor("#FFFFE0B2"));
                 } else {
                   result.addIfNeeded(
                       line,
@@ -370,6 +374,26 @@ public class GradleCodeAnalyzer implements CodeAnalyzer {
       return new DependencyInfo(0, 0, matcher.group(1), matcher.group(2), matcher.group(3), text);
     }
     return null;
+  }
+
+  void tryToSpanDependency(int line, int column, Token token, int color) {
+
+    int start = column + 1;
+    int length = token.getText().length() - 2;
+
+    if (length <= 0) return;
+
+    int fg =
+        ColorUtils.calculateLuminance(color) > 0.5
+            ? EditorColorScheme.black
+            : EditorColorScheme.white;
+
+    Span span = Span.obtain(start, TextStyle.makeStyle(fg, 0, false, true, false));
+    span.setBackgroundColorMy(color);
+    result.add(line, span);
+    Span reset = Span.obtain(start + length, EditorColorScheme.javastring);
+    reset.setBackgroundColorMy(Color.TRANSPARENT);
+    result.add(line, reset);
   }
 
   void tryToSpanColor(int line, int column, Token token, int color) {

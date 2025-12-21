@@ -5,12 +5,7 @@ import android.util.Log;
 
 import androidx.core.graphics.ColorUtils;
 
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
 import io.github.rosemoe.sora.langs.html.HTMLAutoComplete;
-import io.github.rosemoe.sora.langs.internal.CodeHighlighter;
-import ir.ninjacoder.ghostide.core.utils.FileUtil;
-import java.util.List;
 import org.antlr.v4.runtime.ANTLRInputStream;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CodePointCharStream;
@@ -64,7 +59,7 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
       TextAnalyzeResult result,
       TextAnalyzer.AnalyzeThread.Delegate delegate) {
     try {
-      this.result = result;
+      result = result;
       CodePointCharStream stream = CharStreams.fromReader(new StringReader(content.toString()));
       hl = new RainbowBracketHelper(content);
       htmlCodeAnalyzer = new BasicSyntaxPullAnalyzer();
@@ -207,9 +202,10 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
               break;
             }
           case HTMLLexer.STRING:
-          case HTMLLexer.CHATREF:
           case HTMLLexer.JSREGEX:
+          case HTMLLexer.CHATREF:
             {
+
               if (previous == HTMLLexer.DOLLAR || token.getType() == HTMLLexer.DOLLAR) {
                 result.addIfNeeded(line, column, EditorColorScheme.jsoprator);
               }
@@ -262,7 +258,7 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
                 result.addIfNeeded(line, column, forString());
               }
 
-              CodeHighlighter.highlightFString(token.getText(), line, column, result);
+              result.addIfNeeded(line, column, forString());
               break;
             }
             /// colse
@@ -432,21 +428,6 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
 
               result.addIfNeeded(line, column, colorid);
               var cssH = new CSSVariableParser(editor);
-              try {
-                List<CssColor> list =
-                    new Gson()
-                        .fromJson(
-                            FileUtil.readFile(
-                                "/storage/emulated/0/GhostWebIDE/plugins/betterhtm/data/color.kson"),
-                            new TypeToken<List<CssColor>>() {}.getType());
-                for (var mt : list) {
-                  if (token.getText().equals(mt.getColorName())) {
-                    tryToSpanColor(line, column, token, Color.parseColor(mt.getCssColor()));
-                  }
-                }
-              } catch (Exception err) {
-                Log.e("Error to Load colorList", err.getLocalizedMessage());
-              }
               cssH.highlightVariables(result, editor.getText().toString());
               break;
             }
@@ -514,25 +495,52 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
     return TextStyle.makeStyle(EditorColorScheme.htmlstr, 0, true, false, false);
   }
 
-  void tryToSpanColor(int line, int column, Token token, int color) {
+  void tryToSpanColor(int line, int column, String token, int color) {
     Span span =
         Span.obtain(
             column,
             TextStyle.makeStyle(
                 ColorUtils.calculateLuminance(color) > 0.5
                     ? EditorColorScheme.black
-                    : EditorColorScheme.white));
+                    : EditorColorScheme.white,
+                0,
+                false,
+                false,
+                false));
     span.setBackgroundColorMy(color);
     result.add(line, span);
 
-    Span middle = Span.obtain(column + token.getText().length(), EditorColorScheme.TEXT_NORMAL);
+    Span middle = Span.obtain(column + token.length(), EditorColorScheme.TEXT_NORMAL);
     middle.setBackgroundColorMy(Color.TRANSPARENT);
     result.add(line, middle);
 
     Span end =
-        Span.obtain(
-            column + token.getText().length(), TextStyle.makeStyle(EditorColorScheme.TEXT_NORMAL));
+        Span.obtain(column + token.length(), TextStyle.makeStyle(EditorColorScheme.TEXT_NORMAL));
     end.setBackgroundColorMy(Color.TRANSPARENT);
     result.add(line, end);
+  }
+
+  private String normalizeHexColor(String hex) {
+    hex = hex.toUpperCase();
+
+    if (hex.length() == 4) {
+
+      char r = hex.charAt(1);
+      char g = hex.charAt(2);
+      char b = hex.charAt(3);
+      return "#" + r + r + g + g + b + b;
+    }
+
+    if (hex.length() == 7) {
+
+      return hex;
+    }
+
+    if (hex.length() == 9) {
+
+      return hex;
+    }
+
+    return null;
   }
 }

@@ -49,7 +49,10 @@ public class BlurMod implements PluginManagerCompat {
   private CodeEditorActivity currentActivity;
 
   @Override
-  public void getEditor(CodeEditor arg0) {}
+  public void getEditor(CodeEditor arg0) {
+    
+  }
+  
 
   @Override
   public String setName() {
