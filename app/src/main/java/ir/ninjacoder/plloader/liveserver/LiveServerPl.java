@@ -6,6 +6,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.text.TextUtils;
 import android.transition.Transition;
+import android.webkit.WebViewClient;
 import com.google.android.material.tabs.TabLayout;
 import com.google.android.material.transition.platform.MaterialSharedAxis;
 import android.widget.EditText;
@@ -154,7 +155,7 @@ public class LiveServerPl implements PluginManagerCompat {
 
                   if (filePath != null && filePath.endsWith(".html")) {
                     live = new LiveServerPopup(v.getContext(), filePath);
-                    live.showAtLocation(v, Gravity.TOP, 0, 0);
+                    live.showAtLocation(v, Gravity.TOP, 0, 210);
                   } else {
                     String message = "open html file" + (filePath != null ? filePath : "null");
                     DataUtil.showMessage(v.getContext(), message);
@@ -194,10 +195,13 @@ public class LiveServerPl implements PluginManagerCompat {
     private final Point initialPosition = new Point();
     private String path;
     private WebView webView;
+    private ImageView refresh;
+    private MaterialCardView roots;
     private EditText localbar;
     private boolean isDragging = false;
     private boolean isResizing = false;
     private boolean isAutoRefreshEnabled = true;
+    private View dragHandle;
 
     public LiveServerPopup(Context context, String path) {
       super(context);
@@ -218,7 +222,7 @@ public class LiveServerPl implements PluginManagerCompat {
 
     private void setupPopup(Context context) {
 
-      MaterialCardView roots = new MaterialCardView(context);
+      roots = new MaterialCardView(context);
       roots.setId(View.generateViewId());
       roots.setLayoutParams(
           new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(context, 250)));
@@ -244,7 +248,7 @@ public class LiveServerPl implements PluginManagerCompat {
           dpToPx(context, 8), dpToPx(context, 8), dpToPx(context, 8), dpToPx(context, 8));
       linear2.setOrientation(LinearLayout.HORIZONTAL);
 
-      ImageView refresh = new ImageView(context);
+      refresh = new ImageView(context);
       refresh.setId(View.generateViewId());
       refresh.setFocusable(false);
       LinearLayout.LayoutParams refreshParams =
@@ -321,11 +325,11 @@ public class LiveServerPl implements PluginManagerCompat {
       setExitTransition(exit);
       setupButtonListeners(refresh, close, context);
 
-      setupDragAndResizeLogic(context, linear2, resizeHandle);
+      setupDragAndResizeLogic(context, roots, resizeHandle);
     }
 
     private void setupDragAndResizeLogic(Context context, View dragHandle, View resizeHandle) {
-
+      this.dragHandle = dragHandle;
       dragHandle.setOnTouchListener(
           new View.OnTouchListener() {
             @Override
@@ -334,7 +338,15 @@ public class LiveServerPl implements PluginManagerCompat {
             }
           });
 
-      webView.setOnTouchListener(
+      refresh.setOnTouchListener(
+          new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+              return handleDragEvent(event);
+            }
+          });
+
+      localbar.setOnTouchListener(
           new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -349,6 +361,9 @@ public class LiveServerPl implements PluginManagerCompat {
               return handleResizeEvent(context, event);
             }
           });
+
+      // WebView رو کاملا رها کن تا خودش کارش رو بکنه
+      webView.setOnTouchListener(null);
     }
 
     private boolean handleDragEvent(MotionEvent event) {
@@ -370,14 +385,16 @@ public class LiveServerPl implements PluginManagerCompat {
             int newX = initialPosition.x + dx;
             int newY = initialPosition.y + dy;
 
+            // پنجره را جابجا کن
             update(newX, newY, getWidth(), getHeight());
+            return true;
           }
-          return true;
+          break;
 
         case MotionEvent.ACTION_UP:
         case MotionEvent.ACTION_CANCEL:
           isDragging = false;
-          return true;
+          break;
       }
       return false;
     }
@@ -402,14 +419,16 @@ public class LiveServerPl implements PluginManagerCompat {
             int newWidth = Math.max(dpToPx(context, MIN_WIDTH_DP), initialSize.x + dx);
             int newHeight = Math.max(dpToPx(context, MIN_HEIGHT_DP), initialSize.y + dy);
 
+            // پنجره را resize کن
             update(initialPosition.x, initialPosition.y, newWidth, newHeight);
+            return true;
           }
-          return true;
+          break;
 
         case MotionEvent.ACTION_UP:
         case MotionEvent.ACTION_CANCEL:
           isResizing = false;
-          return true;
+          break;
       }
       return false;
     }
@@ -422,16 +441,30 @@ public class LiveServerPl implements PluginManagerCompat {
               LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT);
       webView.setLayoutParams(webViewParams);
 
+      // تنظیمات WebView برای زوم و اسکرول
       var settings = webView.getSettings();
       settings.setJavaScriptEnabled(true);
       settings.setDomStorageEnabled(true);
+      settings.setSupportZoom(true);
+      settings.setBuiltInZoomControls(true);
+      settings.setDisplayZoomControls(false);
       settings.setLoadWithOverviewMode(true);
       settings.setUseWideViewPort(true);
       settings.setAllowFileAccess(true);
       settings.setAllowContentAccess(true);
       settings.setMediaPlaybackRequiresUserGesture(false);
 
+      // این تنظیمات مهم برای زوم بهتر
+      settings.setSupportMultipleWindows(false);
+
+      // فعال کردن اسکرول
+      webView.setVerticalScrollBarEnabled(true);
+      webView.setHorizontalScrollBarEnabled(true);
+      webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
+
+      webView.setWebViewClient(new WebViewClient());
       webView.setWebChromeClient(new WebChromeClient());
+
       String loadUrl = convertFilePathToUrl(path);
       Log.d("LiveServer", "Final URL: " + loadUrl);
 
@@ -439,7 +472,9 @@ public class LiveServerPl implements PluginManagerCompat {
         webView.loadUrl(loadUrl);
       } else {
         webView.loadData(
-            "<html><body><h1>HTML file not found</h1></body></html>", "text/html", "UTF-8");
+            "<html><body style='padding: 20px;'><h1>HTML file not found</h1></body></html>",
+            "text/html",
+            "UTF-8");
       }
 
       return webView;

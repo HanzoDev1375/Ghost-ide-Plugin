@@ -3367,9 +3367,17 @@ BOOL_LITERAL
    | 'false'
    ;
 
+QUOTESIN
+   : '"'
+   ;
+
+QUOTESIN1
+   : '\''
+   ;
+
 STRING
-   : '"' .*? '"'
-   | '\'' .*? '\''
+   : QUOTESIN .*? QUOTESIN
+   | QUOTESIN1 .*? QUOTESIN1
    | '`' .*? '`'
    ;
 
@@ -3683,13 +3691,13 @@ fragment INEGETRGB
    ;
 
 HSL
-   : 'hsla(' HUE ',' SATURATION ',' LIGHTNESS (',' ALPHA)? ')'
-   | 'rgba(' HUE ',' SATURATION ',' LIGHTNESS (',' ALPHA)? ')'
+   : 'hsla' WS? '('WS? HUE ',' WS? SATURATION ',' WS? LIGHTNESS (',' ALPHA)? WS? ')'
+   | 'rgba' WS?'(' WS? HUE ',' WS? SATURATION ',' WS? LIGHTNESS (',' ALPHA)? WS? ')'
    ;
 
 HTMLRGB
-   : 'rgb(' HUE ',' SATURATION ',' LIGHTNESS ')'
-   | 'hsl(' HUE ',' SATURATION ',' LIGHTNESS ')'
+   : 'rgb' WS? '(' WS? HUE WS? ',' WS? SATURATION WS? ',' WS? LIGHTNESS WS? ')'
+   | 'hsl' WS? '(' WS? HUE WS? ',' WS? SATURATION WS? ',' WS? LIGHTNESS WS? ')'
    ;
 
 CSSXCOLOR
@@ -3720,4 +3728,3 @@ fragment FLOATS
    : [0-1]? '.' [0-9]+
    | [0-1]
    ;
-

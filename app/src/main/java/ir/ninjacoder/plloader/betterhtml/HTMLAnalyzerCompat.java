@@ -5,14 +5,19 @@ import android.util.Log;
 
 import androidx.core.graphics.ColorUtils;
 
+import com.blankj.utilcode.util.ClipboardUtils;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import io.github.rosemoe.sora.langs.html.HTMLAutoComplete;
-import org.antlr.v4.runtime.ANTLRInputStream;
+import ir.ninjacoder.ghostide.core.widget.data.CSSVariableParser;
+import ir.ninjacoder.plloader.CssColors;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CodePointCharStream;
-import org.antlr.v4.runtime.CommonTokenStream;
+import org.antlr.v4.runtime.CommonToken;
 import org.antlr.v4.runtime.Token;
-import org.antlr.v4.runtime.tree.ErrorNode;
-import org.antlr.v4.runtime.tree.ParseTreeWalker;
 
 import java.io.IOException;
 import java.io.StringReader;
@@ -22,11 +27,7 @@ import io.github.rosemoe.sora.data.BlockLine;
 import io.github.rosemoe.sora.data.RainbowBracketHelper;
 import io.github.rosemoe.sora.data.Span;
 import io.github.rosemoe.sora.interfaces.CodeAnalyzer;
-import io.github.rosemoe.sora.langs.less.LessLexer;
-import io.github.rosemoe.sora.langs.less.LessParser;
-import io.github.rosemoe.sora.langs.less.LessParserBaseListener;
 import io.github.rosemoe.sora.langs.xml.analyzer.BasicSyntaxPullAnalyzer;
-import io.github.rosemoe.sora.langs.xml.analyzer.Utils;
 import io.github.rosemoe.sora.text.TextAnalyzeResult;
 import io.github.rosemoe.sora.text.TextAnalyzer;
 import io.github.rosemoe.sora.text.TextStyle;
@@ -38,12 +39,13 @@ import ir.ninjacoder.ghostide.core.GhostIdeAppLoader;
 import ir.ninjacoder.ghostide.core.IdeEditor;
 import ir.ninjacoder.ghostide.core.marco.RegexUtilCompat;
 import ir.ninjacoder.ghostide.core.utils.ObjectUtils;
-import ir.ninjacoder.ghostide.core.widget.data.CSSVariableParser;
+import org.jsoup.Jsoup;
 
 public class HTMLAnalyzerCompat implements CodeAnalyzer {
   private IdeEditor editor;
   private RainbowBracketHelper hl;
   private TextAnalyzeResult result;
+  private String ksoncolor = "/storage/emulated/0/GhostWebIDE/plugins/betterhtm/data/color.kson";
 
   public HTMLAnalyzerCompat() {}
 
@@ -59,7 +61,9 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
       TextAnalyzeResult result,
       TextAnalyzer.AnalyzeThread.Delegate delegate) {
     try {
-      result = result;
+      this.result = result;
+      StringBuilder text =
+          content instanceof StringBuilder ? (StringBuilder) content : new StringBuilder(content);
       CodePointCharStream stream = CharStreams.fromReader(new StringReader(content.toString()));
       hl = new RainbowBracketHelper(content);
       htmlCodeAnalyzer = new BasicSyntaxPullAnalyzer();
@@ -99,67 +103,7 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
               result.addNormalIfNull();
             }
             break;
-          case HTMLLexer.ABSTRACT:
-          case HTMLLexer.ASSERT:
-          case HTMLLexer.BREAK:
-          case HTMLLexer.CASE:
-          case HTMLLexer.CATCH:
-          case HTMLLexer.CLASS:
-          case HTMLLexer.CONST:
-          case HTMLLexer.CONTINUE:
-          case HTMLLexer.DEFAULT:
-          case HTMLLexer.DO:
-          case HTMLLexer.ELSE:
-          case HTMLLexer.EXTENDS:
-          case HTMLLexer.FINAL:
-          case HTMLLexer.FINALLY:
-          case HTMLLexer.FOR:
-          case HTMLLexer.IF:
-          case HTMLLexer.GOTO:
-          case HTMLLexer.IMPLEMENTS:
-          case HTMLLexer.IMPORT:
-          case HTMLLexer.INSTANCEOF:
-          case HTMLLexer.INTERFACE:
-          case HTMLLexer.NATIVE:
-          case HTMLLexer.NEW:
-          case HTMLLexer.PACKAGE:
-          case HTMLLexer.PRIVATE:
-          case HTMLLexer.PROTECTED:
-          case HTMLLexer.PUBLIC:
-          case HTMLLexer.RETURN:
-          case HTMLLexer.STATIC:
-          case HTMLLexer.STRICTFP:
-          case HTMLLexer.SUPER:
-          case HTMLLexer.SWITCH:
-          case HTMLLexer.SYNCHRONIZED:
-          case HTMLLexer.THIS:
-          case HTMLLexer.THROW:
-          case HTMLLexer.THROWS:
-          case HTMLLexer.TRANSIENT:
-          case HTMLLexer.TRY:
-          case HTMLLexer.VOID:
-          case HTMLLexer.VOLATILE:
-          case HTMLLexer.WHILE:
-          case HTMLLexer.VAR:
-          case HTMLLexer.FUNCTION:
-          case HTMLLexer.LET:
-          case HTMLLexer.DEBUGGER:
-          case HTMLLexer.YELD:
-          case HTMLLexer.BYTE:
-          case HTMLLexer.CHAR:
-          case HTMLLexer.DOUBLE:
-          case HTMLLexer.ENUM:
-          case HTMLLexer.FLOAT:
-          case HTMLLexer.INT:
-          case HTMLLexer.LONG:
-          case HTMLLexer.SHORT:
-          case HTMLLexer.BOOLEAN:
-            result.addIfNeeded(
-                line,
-                column,
-                TextStyle.makeStyle(
-                    EditorColorScheme.jskeyword, 0, true, false, false, false, true));
-            break;
+
           case HTMLLexer.DECIMAL_LITERAL:
           case HTMLLexer.OCT_LITERAL:
           case HTMLLexer.BINARY_LITERAL:
@@ -168,13 +112,6 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
           case HTMLLexer.BOOL_LITERAL:
           case HTMLLexer.NULL_LITERAL:
             result.addIfNeeded(line, column, EditorColorScheme.jsoprator);
-            break;
-
-          case HTMLLexer.PhpFuns:
-            result.addIfNeeded(
-                line,
-                column,
-                TextStyle.makeStyle(EditorColorScheme.phpcolormatch3, 0, true, false, false));
             break;
           case HTMLLexer.CSSXCOLOR:
             ListCss3Color.getNumberColor(token, line, column, result);
@@ -202,10 +139,8 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
               break;
             }
           case HTMLLexer.STRING:
-          case HTMLLexer.JSREGEX:
           case HTMLLexer.CHATREF:
             {
-
               if (previous == HTMLLexer.DOLLAR || token.getType() == HTMLLexer.DOLLAR) {
                 result.addIfNeeded(line, column, EditorColorScheme.jsoprator);
               }
@@ -220,20 +155,34 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
                   String red = colorString.substring(1, 2);
                   String green = colorString.substring(2, 3);
                   String blue = colorString.substring(3, 4);
-                  colorString = "#" + red + red + green + green + blue + blue; // تبدیل به شش رقمی
+                  colorString = "#" + red + red + green + green + blue + blue;
                 }
 
                 try {
                   int color = Color.parseColor(colorString);
-                  colors.addIfNeeded(line, column, EditorColorScheme.white);
+                  colors.addIfNeeded(line, column, EditorColorScheme.TEXT_NORMAL);
                   if (ColorUtils.calculateLuminance(color) > 0.5) {
-                    Span span = Span.obtain(column, TextStyle.makeStyle(EditorColorScheme.black));
+                    Span span =
+                        Span.obtain(
+                            column,
+                            TextStyle.makeStyle(
+                                EditorColorScheme.black, 0, false, false, false, false, true));
                     if (span != null) {
                       span.setBackgroundColorMy(color);
                       colors.add(line, span);
                     }
                   } else {
-                    Span span = Span.obtain(column, TextStyle.makeStyle(EditorColorScheme.white));
+                    Span span =
+                        Span.obtain(
+                            column,
+                            TextStyle.makeStyle(
+                                EditorColorScheme.TEXT_NORMAL,
+                                0,
+                                false,
+                                false,
+                                false,
+                                false,
+                                true));
                     if (span != null) {
                       span.setBackgroundColorMy(color);
                       colors.add(line, span);
@@ -263,11 +212,15 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
             }
             /// colse
           case HTMLLexer.LPAREN:
+            hl.handleOpenBracket(result, line, column, true);
+            break;
           case HTMLLexer.LBRACK:
             hl.handleOpenBracket(result, line, column, false);
             break;
             // open
           case HTMLLexer.RPAREN:
+            hl.handleCloseBracket(result, line, column, true);
+            break;
           case HTMLLexer.RBRACK:
             hl.handleCloseBracket(result, line, column, false);
             break;
@@ -311,7 +264,8 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
           case HTMLLexer.DOLLAR:
           case HTMLLexer.DIV:
           case HTMLLexer.AT:
-          case HTMLLexer.JSBACKTIK:
+          case HTMLLexer.QUOTESIN:
+          case HTMLLexer.QUOTESIN1:
             hl.handleCustom(result, line, column, EditorColorScheme.htmlsymbol);
             if (previous == HTMLLexer.IDENTIFIER || token.getType() == HTMLLexer.IDENTIFIER) {
               result.addIfNeeded(line, column, EditorColorScheme.jsattr);
@@ -338,8 +292,26 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
 
             break;
           case HTMLLexer.LT:
-            hl.handleOpenBracket(result, line, column, true);
-            break;
+            {
+              if (stack.isEmpty()) {
+                if (currSwitch > maxSwitch) {
+                  maxSwitch = currSwitch;
+                }
+                currSwitch = 0;
+              }
+              currSwitch++;
+              BlockLine block = result.obtainNewBlock();
+              block.startLine = line;
+              block.startColumn = column;
+              var colorida = EditorColorScheme.htmlblocknormal;
+
+              if (GhostIdeAppLoader.getPrefManager().getBoolean("breaks", false) == true)
+                colorida = HTMLConstants.get(stack.size());
+              else colorida = EditorColorScheme.htmlblocknormal;
+              stack.push(block);
+              result.addIfNeeded(line, column, colorida);
+              break;
+            }
             //// '/>'
           case HTMLLexer.SLASH_CLOSE:
             result.addIfNeeded(line, column, EditorColorScheme.htmlblockhash);
@@ -347,14 +319,28 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
 
             /// '</'
           case HTMLLexer.OPEN_SLASH:
-            hl.handleCloseBracket(result, line, column, true);
-            break;
+            {
+              if (!stack.isEmpty()) {
+                BlockLine b = stack.pop();
+                b.endLine = line;
+                b.endColumn = column;
+                if (b.startLine != b.endLine) {
+                  result.addBlockLine(b);
+                }
+              }
+              var colorres1 = EditorColorScheme.htmlblocknormal;
+              if (GhostIdeAppLoader.getPrefManager().getBoolean("breaks", false) == true)
+                colorres1 = HTMLConstants.get(stack.size());
+              else colorres1 = EditorColorScheme.htmlblocknormal;
+              result.addIfNeeded(line, column, colorres1);
+              break;
+            }
           case HTMLLexer.IDENTIFIER:
             {
               int colorid = EditorColorScheme.TEXT_NORMAL;
               info.addIdentifier(token.getText());
               boolean isHexColor = false;
-              boolean isBold, isItalic, isUnderLineMode = false;
+              boolean isBold, isUnderLineMode = false;
 
               if (previous == HTMLLexer.AT) {
                 colorid = EditorColorScheme.Ninja;
@@ -387,11 +373,11 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
               }
               // show '<'
               if (previous == HTMLLexer.LT) {
-                colorid = EditorColorScheme.htmltag;
+                colorid = EditorColorScheme.OPERATOR;
               }
               // end '</'
               if (previous == HTMLLexer.OPEN_SLASH) {
-                colorid = EditorColorScheme.htmltag;
+                colorid = EditorColorScheme.OPERATOR;
               }
               if (previous == HTMLLexer.SUB) {
                 colorid = EditorColorScheme.htmlsymbol;
@@ -399,18 +385,18 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
               }
               if (previous == HTMLLexer.DOLLAR) {
                 // $php
-                colorid = EditorColorScheme.phpattr;
+                colorid = EditorColorScheme.htmlattr;
               }
               if (previous == HTMLLexer.DOT) {
                 /// def code result -> Java.user();
-                colorid = EditorColorScheme.jsoprator;
+                colorid = EditorColorScheme.javafun;
               }
               // next
               if (ObjectUtils.getNextLexer(lexer, '(')) {
-                colorid = EditorColorScheme.jsattr;
+                colorid = EditorColorScheme.javafield;
               }
               if (ObjectUtils.getNextLexer(lexer, '.')) {
-                colorid = EditorColorScheme.jskeyword;
+                colorid = EditorColorScheme.javafun;
               }
               if (ObjectUtils.getNextLexer(lexer, ',')) {
                 colorid = EditorColorScheme.javaparament;
@@ -425,14 +411,26 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
               if (ObjectUtils.getNextLexer(lexer, ':')) {
                 colorid = EditorColorScheme.javanumber;
               }
+              hl.handleCustom(result, line, column, colorid);
 
-              result.addIfNeeded(line, column, colorid);
-              var cssH = new CSSVariableParser(editor);
-              cssH.highlightVariables(result, editor.getText().toString());
+              try {
+                List<CssColor> cssColor =
+                    new Gson()
+                        .fromJson(
+                            CssColors.getJsonColor(), new TypeToken<List<CssColor>>() {}.getType());
+                for (var mt : cssColor) {
+                  if (token.getText().equals(mt.getColorName())) {
+                    tryToSpanColor(line, column, token, Color.parseColor(mt.getCssColor()));
+                  }
+                }
+              } catch (Exception err) {
+                Log.e("CSS_ERROR", err.getLocalizedMessage());
+              }
+
               break;
             }
           case HTMLLexer.HTMLRGB:
-            ListCss3Color.getHexColor(token, line, column, result);
+            setRgbColor(token, line, column, result);
             // result.addIfNeeded(line, column, EditorColorScheme.COLOR_DEBUG);
             break;
           case HTMLLexer.HSL:
@@ -440,14 +438,38 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
             ListCss3Color.getHslColor(token, line, column, result);
             break;
           case HTMLLexer.LBRACE:
-            hl.handleOpenBracket(result, line, column, false);
-
+            if (stack.isEmpty()) {
+              if (currSwitch > maxSwitch) {
+                maxSwitch = currSwitch;
+              }
+              currSwitch = 0; // ریست کردن currSwitch
+            }
+            currSwitch++;
+            BlockLine block = result.obtainNewBlock();
+            block.startLine = line;
+            block.startColumn = column;
+            // max level 8x
+            var colorid = EditorColorScheme.htmlblocknormal;
+            stack.push(block);
+            hl.handleOpenBracket(result, line, column, colorid);
+            // result.addIfNeeded(line, column, colorid);
             break;
 
           case HTMLLexer.RBRACE:
-            hl.handleCloseBracket(result, line, column, false);
-            break;
+            {
+              if (!stack.isEmpty()) {
+                BlockLine b = stack.pop();
+                b.endLine = line;
+                b.endColumn = column;
 
+                if (b.startLine != b.endLine || b.startColumn != b.endColumn) {
+                  result.addBlockLine(b);
+                }
+              }
+              // اضافه کردن رنگ برای RBRACE
+              hl.handleCloseBracket(result, line, column, EditorColorScheme.htmlblocknormal);
+              break;
+            }
           case HTMLLexer.COLORSSS:
             result.addIfNeeded(
                 line,
@@ -481,6 +503,7 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
       result.determine(lastLine);
       info.finish();
       result.setExtra(info);
+
     } catch (IOException e) {
       e.printStackTrace();
       Log.e("TAG", e.getMessage());
@@ -495,7 +518,7 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
     return TextStyle.makeStyle(EditorColorScheme.htmlstr, 0, true, false, false);
   }
 
-  void tryToSpanColor(int line, int column, String token, int color) {
+  void tryToSpanColor(int line, int column, Token token, int color) {
     Span span =
         Span.obtain(
             column,
@@ -504,43 +527,107 @@ public class HTMLAnalyzerCompat implements CodeAnalyzer {
                     ? EditorColorScheme.black
                     : EditorColorScheme.white,
                 0,
-                false,
-                false,
+                true,
+                true,
                 false));
     span.setBackgroundColorMy(color);
     result.add(line, span);
 
-    Span middle = Span.obtain(column + token.length(), EditorColorScheme.TEXT_NORMAL);
+    Span middle = Span.obtain(column + token.getText().length(), EditorColorScheme.TEXT_NORMAL);
     middle.setBackgroundColorMy(Color.TRANSPARENT);
     result.add(line, middle);
 
     Span end =
-        Span.obtain(column + token.length(), TextStyle.makeStyle(EditorColorScheme.TEXT_NORMAL));
+        Span.obtain(
+            column + token.getText().length(), TextStyle.makeStyle(EditorColorScheme.TEXT_NORMAL));
     end.setBackgroundColorMy(Color.TRANSPARENT);
     result.add(line, end);
   }
 
-  private String normalizeHexColor(String hex) {
-    hex = hex.toUpperCase();
+  private class CssColor {
+    private final String colorName;
+    private final String cssColor;
 
-    if (hex.length() == 4) {
-
-      char r = hex.charAt(1);
-      char g = hex.charAt(2);
-      char b = hex.charAt(3);
-      return "#" + r + r + g + g + b + b;
+    public CssColor(String colorName, String cssColor) {
+      this.colorName = colorName;
+      this.cssColor = cssColor;
     }
 
-    if (hex.length() == 7) {
-
-      return hex;
+    public String getColorName() {
+      return this.colorName;
     }
 
-    if (hex.length() == 9) {
-
-      return hex;
+    public String getCssColor() {
+      return this.cssColor;
     }
+  }
 
-    return null;
+  void setRgbColor(Token token, int line, int column, TextAnalyzeResult result) {
+    var text1 = token.getText();
+    var colors = result;
+
+    try {
+      // پیدا کردن rgb
+      String regex = "(?i)rgb\\s*\\(\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})\\s*,\\s*(\\d{1,3})\\s*\\)";
+      Pattern pattern = Pattern.compile(regex);
+      Matcher matcher = pattern.matcher(text1);
+
+      if (matcher.find()) {
+        // گرفتن اعداد
+        int r = Integer.parseInt(matcher.group(1));
+        int g = Integer.parseInt(matcher.group(2));
+        int b = Integer.parseInt(matcher.group(3));
+
+        // محدود کردن
+        r = Math.max(0, Math.min(255, r));
+        g = Math.max(0, Math.min(255, g));
+        b = Math.max(0, Math.min(255, b));
+
+        int color = Color.rgb(r, g, b);
+
+        // موقعیت‌ها
+        int start = matcher.start();
+        int end = matcher.end();
+        String rgbText = matcher.group(0);
+        Span first =
+            Span.obtain(
+                column,
+                TextStyle.makeStyle(
+                    ColorUtils.calculateLuminance(color) > 0.5
+                        ? EditorColorScheme.black
+                        : EditorColorScheme.white,
+                    0,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false));
+        first.setBackgroundColorMy(Color.TRANSPARENT);
+        colors.add(line, first);
+
+        Span middle =
+            Span.obtain(
+                column + start,
+                TextStyle.makeStyle(
+                    ColorUtils.calculateLuminance(color) > 0.5
+                        ? EditorColorScheme.black
+                        : EditorColorScheme.white,
+                    0,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false));
+        middle.setBackgroundColorMy(color);
+        colors.add(line, middle);
+
+        // 3. اسپن آخر: پایان رنگ
+        Span last = Span.obtain(column + end, TextStyle.makeStyle(EditorColorScheme.TEXT_NORMAL));
+        // رنگو پاک کن برای اسپن آخر
+        colors.add(line, last);
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
   }
 }

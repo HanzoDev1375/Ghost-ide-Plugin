@@ -105,7 +105,7 @@ public class CodeAz implements CodeAnalyzer {
             break;
 
           case JSON5Lexer.COLON:
-            result.addIfNeeded(line, column, EditorColorScheme.javaoprator);
+            result.addIfNeeded(line, column, EditorColorScheme.red);
             if (state == ParseState.IN_OBJECT_KEY) {
               state = ParseState.AFTER_COLON; // بعد از colon منتظر value هستیم
             }
@@ -128,17 +128,17 @@ public class CodeAz implements CodeAnalyzer {
           case JSON5Lexer.HEXCOLOR:
             if (state == ParseState.AFTER_COLON) {
               // این string یک VALUE است
-              result.addIfNeeded(line, column, EditorColorScheme.javastring);
+              result.addIfNeeded(line, column, EditorColorScheme.green);
               state = ParseState.NORMAL;
             } else if (state == ParseState.IN_OBJECT_KEY) {
               // این string یک KEY است
-              result.addIfNeeded(line, column, EditorColorScheme.IDENTIFIER_NAME);
+              tryToSpanNotBackground(line, column, token.getText(), EditorColorScheme.jskeyword);
               state = ParseState.NORMAL;
             } else {
 
               result.addIfNeeded(line, column, EditorColorScheme.javastring);
             }
-            
+
             if (token.getType() == JSON5Lexer.STRING) {
 
               String raw = token.getText();
@@ -168,11 +168,7 @@ public class CodeAz implements CodeAnalyzer {
 
                   result.addIfNeeded(line, column, EditorColorScheme.javastring);
 
-                  spanRgbValuesOnly(
-                      line,
-                      column + 1,
-                      inner,
-                      rgb);
+                  spanRgbValuesOnly(line, column + 1, inner, rgb);
                   break;
                 }
                 Integer hsl = parseHslColor(inner);
@@ -180,11 +176,7 @@ public class CodeAz implements CodeAnalyzer {
 
                   result.addIfNeeded(line, column, EditorColorScheme.javastring);
 
-                  spanRgbValuesOnly(
-                      line,
-                      column + 1,
-                      inner,
-                      hsl);
+                  spanRgbValuesOnly(line, column + 1, inner, hsl);
                   break;
                 }
               }
@@ -201,7 +193,7 @@ public class CodeAz implements CodeAnalyzer {
               state = ParseState.NORMAL;
             } else if (state == ParseState.IN_OBJECT_KEY) {
               // عدد به عنوان KEY
-              result.addIfNeeded(line, column, EditorColorScheme.IDENTIFIER_NAME);
+              result.addIfNeeded(line, column, EditorColorScheme.jsfun);
               state = ParseState.NORMAL;
             } else {
               // حالت عادی
@@ -217,7 +209,7 @@ public class CodeAz implements CodeAnalyzer {
               state = ParseState.NORMAL;
             } else if (state == ParseState.IN_OBJECT_KEY) {
               // literal به عنوان KEY
-              result.addIfNeeded(line, column, EditorColorScheme.IDENTIFIER_NAME);
+              result.addIfNeeded(line, column, EditorColorScheme.jsfun);
               state = ParseState.NORMAL;
             } else {
               // حالت عادی
@@ -232,7 +224,7 @@ public class CodeAz implements CodeAnalyzer {
               state = ParseState.NORMAL;
             } else if (state == ParseState.IN_OBJECT_KEY) {
               // identifier به عنوان KEY
-              result.addIfNeeded(line, column, EditorColorScheme.IDENTIFIER_NAME);
+              tryToSpanNotBackground(line, column, token.getText(), EditorColorScheme.gold);
               state = ParseState.NORMAL;
             } else {
               // حالت عادی
@@ -269,6 +261,18 @@ public class CodeAz implements CodeAnalyzer {
     }
   }
 
+  void tryToSpanNotBackground(int line, int column, String token, int colorState) {
+    Span span = Span.obtain(column, TextStyle.makeStyle(colorState));
+    result.add(line, span);
+
+    Span middle = Span.obtain(column + token.length(), EditorColorScheme.javafun);
+
+    result.add(line, middle);
+
+    Span end = Span.obtain(column + token.length(), TextStyle.makeStyle(EditorColorScheme.javafun));
+    result.add(line, end);
+  }
+
   void tryToSpanColor(int line, int column, String token, int color) {
     Span span =
         Span.obtain(
@@ -284,12 +288,12 @@ public class CodeAz implements CodeAnalyzer {
     span.setBackgroundColorMy(color);
     result.add(line, span);
 
-    Span middle = Span.obtain(column + token.length(), EditorColorScheme.TEXT_NORMAL);
+    Span middle = Span.obtain(column + token.length(), EditorColorScheme.javastring);
     middle.setBackgroundColorMy(Color.TRANSPARENT);
     result.add(line, middle);
 
     Span end =
-        Span.obtain(column + token.length(), TextStyle.makeStyle(EditorColorScheme.TEXT_NORMAL));
+        Span.obtain(column + token.length(), TextStyle.makeStyle(EditorColorScheme.javastring));
     end.setBackgroundColorMy(Color.TRANSPARENT);
     result.add(line, end);
   }

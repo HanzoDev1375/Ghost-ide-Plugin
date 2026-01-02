@@ -170,7 +170,6 @@ public class Json5Lang implements PluginManagerCompat {
 
   @Override
   public String langModel() {
-
     return ".kson,.json5,.fson,.pathghost";
   }
 

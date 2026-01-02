@@ -1,8 +1,11 @@
 package ir.ninjacoder.plloader;
 
 import android.graphics.Color;
+import com.blankj.utilcode.util.ClipboardUtils;
+import io.github.rosemoe.sora.data.Span;
 import io.github.rosemoe.sora.event.ContentChangeEvent;
 import io.github.rosemoe.sora.event.SelectionChangeEvent;
+import io.github.rosemoe.sora.text.TextStyle;
 import io.github.rosemoe.sora.widget.CodeEditor;
 import io.github.rosemoe.sora.widget.EditorColorScheme;
 import ir.ninjacoder.ghostide.core.activities.BaseCompat;
@@ -252,12 +255,77 @@ public class ColorRgbCurosr implements PluginManagerCompat {
 
   private void changeCursorColor(CodeEditor editor, ColorHelper colorHelper) {
     try {
-      // دوباره چک کن که فایل هنوز CSS هست
-      if (!isCssFile) {
+      if (!isCssFile || editor == null) {
         restoreOriginalCursorColor();
         return;
       }
 
+      // گرفتن موقعیت کرسر
+      int cursorLine = editor.getCursor().getLeftLine();
+      int cursorColumn = editor.getCursor().getLeftColumn();
+
+      // گرفتن Spans برای خط فعلی
+      List<Span> spans = editor.getSpansForLine(cursorLine);
+
+      if (spans != null && !spans.isEmpty()) {
+        // پیدا کردن Span در موقعیت کرسر
+        Span spanAtCursor = null;
+        for (int i = 0; i < spans.size(); i++) {
+          Span span = spans.get(i);
+          int spanStart = span.column;
+          int spanEnd = (i + 1 < spans.size()) ? spans.get(i + 1).column : Integer.MAX_VALUE;
+
+          if (cursorColumn >= spanStart && cursorColumn < spanEnd) {
+            spanAtCursor = span;
+            break;
+          }
+        }
+
+        if (spanAtCursor != null) {
+          // گرفتن ID رنگ از Span
+          int colorId = TextStyle.getForegroundColorId(spanAtCursor.style);
+
+          // گرفتن رنگ واقعی از ColorScheme
+          EditorColorScheme scheme = editor.getColorScheme();
+          int spanColor = scheme.getColor(colorId);
+
+          // اعمال رنگ Span به کرسر
+          scheme.setColor(EditorColorScheme.SELECTION_INSERT, spanColor);
+          isCursorColorChanged = true;
+          editor.invalidate();
+
+          android.util.Log.d(
+              "ColorPlugin",
+              "🎨 Applied SPAN color to cursor:"
+                  + "\n  Cursor position: line="
+                  + cursorLine
+                  + ", col="
+                  + cursorColumn
+                  + "\n  Span color ID: "
+                  + colorId
+                  + "\n  Actual color: #"
+                  + Integer.toHexString(spanColor).toUpperCase()
+                  + "\n  Color name: "
+                  + getColorName(colorId));
+        } else {
+          // اگر Span پیدا نشد، از رنگ CSS استفاده کن
+          applyCssColor(editor, colorHelper);
+        }
+      } else {
+        // اگر Spans موجود نبود، از رنگ CSS استفاده کن
+        applyCssColor(editor, colorHelper);
+      }
+
+    } catch (Exception e) {
+      restoreOriginalCursorColor();
+      android.util.Log.e("ColorPlugin", "❌ Error changing cursor color: " + e.getMessage());
+      e.printStackTrace();
+    }
+  }
+
+  private void applyCssColor(CodeEditor editor, ColorHelper colorHelper) {
+    try {
+      // پارس کردن رنگ CSS
       int color;
       String colorText = colorHelper.getColorHex();
 
@@ -269,17 +337,54 @@ public class ColorRgbCurosr implements PluginManagerCompat {
         color = Color.parseColor(colorText);
       }
 
-      // تغییر رنگ کرسر
+      // اعمال رنگ CSS
       editor.getColorScheme().setColor(EditorColorScheme.SELECTION_INSERT, color);
       isCursorColorChanged = true;
-
-      // فورس ریدراو برای اعمال تغییرات
       editor.invalidate();
 
-      android.util.Log.d("ColorPlugin", "🎨 Cursor color changed to: " + colorText);
+      android.util.Log.d("ColorPlugin", "🎨 Applied CSS color: " + colorText);
     } catch (Exception e) {
-      // در صورت خطا در پارس کردن رنگ، از رنگ پیش‌فرض استفاده کن
-      restoreOriginalCursorColor();
+      throw new RuntimeException("Failed to apply CSS color", e);
+    }
+  }
+
+  // تابع برای گرفتن نام رنگ از ID (اختیاری - برای دیباگ)
+  private String getColorName(int colorId) {
+    // فقط ID های اصلی
+    switch (colorId) {
+      case EditorColorScheme.TEXT_NORMAL:
+        return "TEXT_NORMAL";
+      case EditorColorScheme.KEYWORD:
+        return "KEYWORD";
+      case EditorColorScheme.IDENTIFIER_VAR:
+        return "IDENTIFIER_VAR";
+      case EditorColorScheme.IDENTIFIER_NAME:
+        return "IDENTIFIER_NAME";
+      case EditorColorScheme.OPERATOR:
+        return "OPERATOR";
+      case EditorColorScheme.COMMENT:
+        return "COMMENT";
+
+      case EditorColorScheme.LITERAL:
+        return "LITERAL";
+      case EditorColorScheme.FUNCTION_NAME:
+        return "FUNCTION_NAME";
+      case EditorColorScheme.ANNOTATION:
+        return "ANNOTATION";
+      case EditorColorScheme.ATTRIBUTE_NAME:
+        return "ATTRIBUTE_NAME";
+      case EditorColorScheme.ATTRIBUTE_VALUE:
+        return "ATTRIBUTE_VALUE";
+      case EditorColorScheme.HTML_TAG:
+        return "HTML_TAG";
+      case EditorColorScheme.SELECTION_INSERT:
+        return "SELECTION_INSERT";
+      case EditorColorScheme.SELECTED_TEXT_BACKGROUND:
+        return "SELECTED_TEXT_BACKGROUND";
+      case EditorColorScheme.CURRENT_LINE:
+        return "CURRENT_LINE";
+      default:
+        return "UNKNOWN (" + colorId + ")";
     }
   }
 

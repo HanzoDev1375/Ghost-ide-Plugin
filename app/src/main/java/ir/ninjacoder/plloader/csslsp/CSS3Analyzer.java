@@ -10,12 +10,13 @@ import com.google.gson.reflect.TypeToken;
 import io.github.rosemoe.sora.langs.html.HTMLAutoComplete;
 import ir.ninjacoder.plloader.CssColors;
 import java.util.List;
-import org.antlr.v4.runtime.ANTLRInputStream;
+import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CodePointCharStream;
 import org.antlr.v4.runtime.CommonTokenStream;
 import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.tree.ErrorNode;
+import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
 
 import java.io.IOException;
@@ -26,9 +27,6 @@ import io.github.rosemoe.sora.data.BlockLine;
 import io.github.rosemoe.sora.data.RainbowBracketHelper;
 import io.github.rosemoe.sora.data.Span;
 import io.github.rosemoe.sora.interfaces.CodeAnalyzer;
-import io.github.rosemoe.sora.langs.less.LessLexer;
-import io.github.rosemoe.sora.langs.less.LessParser;
-import io.github.rosemoe.sora.langs.less.LessParserBaseListener;
 import io.github.rosemoe.sora.langs.xml.analyzer.BasicSyntaxPullAnalyzer;
 import io.github.rosemoe.sora.langs.xml.analyzer.Utils;
 import io.github.rosemoe.sora.text.TextAnalyzeResult;
@@ -43,7 +41,6 @@ import ir.ninjacoder.ghostide.core.GhostIdeAppLoader;
 import ir.ninjacoder.ghostide.core.IdeEditor;
 import ir.ninjacoder.ghostide.core.marco.RegexUtilCompat;
 import ir.ninjacoder.ghostide.core.utils.ObjectUtils;
-import ir.ninjacoder.ghostide.core.widget.data.CSSVariableParser;
 
 public class CSS3Analyzer implements CodeAnalyzer {
   private IdeEditor editor;
@@ -248,7 +245,6 @@ public class CSS3Analyzer implements CodeAnalyzer {
           case HTMLLexer.BITOR:
           case HTMLLexer.CARET:
           case HTMLLexer.MOD:
-          case HTMLLexer.HASH:
           case HTMLLexer.ADD_ASSIGN:
           case HTMLLexer.SUB_ASSIGN:
           case HTMLLexer.MUL_ASSIGN:
@@ -372,10 +368,6 @@ public class CSS3Analyzer implements CodeAnalyzer {
               if (previous == HTMLLexer.CASE || previous == HTMLLexer.FINAL) {
                 colorid = EditorColorScheme.jsattr;
               }
-              // hash #
-              if (previous == HTMLLexer.HASH) {
-                colorid = EditorColorScheme.htmlsymbol;
-              }
               // show '<'
               if (previous == HTMLLexer.LT) {
                 colorid = EditorColorScheme.OPERATOR;
@@ -417,8 +409,7 @@ public class CSS3Analyzer implements CodeAnalyzer {
                 colorid = EditorColorScheme.javanumber;
               }
               hl.handleCustom(result, line, column, colorid);
-              var cssH = new CSSVariableParser(editor);
-              cssH.highlightVariables(result, editor.getText().toString());
+
               try {
                 List<CssColor> cssColor =
                     new Gson()
@@ -430,7 +421,7 @@ public class CSS3Analyzer implements CodeAnalyzer {
                   }
                 }
               } catch (Exception err) {
-                Log.e("ErrorToRenderColor", err.getLocalizedMessage());
+                Log.e("CSS_ERROR", err.getLocalizedMessage());
               }
 
               break;
@@ -509,6 +500,51 @@ public class CSS3Analyzer implements CodeAnalyzer {
       result.determine(lastLine);
       info.finish();
       result.setExtra(info);
+      CharStream input = CharStreams.fromString(content.toString());
+      css3Lexer lexer2 = new css3Lexer(input);
+      CommonTokenStream tokens = new CommonTokenStream(lexer2);
+      css3Parser parser = new css3Parser(tokens);
+
+      ParseTree tree = parser.stylesheet();
+      var base =
+          new css3ParserBaseListener() {
+
+            @Override
+            public void visitErrorNode(ErrorNode node) {
+              Utils.setErrorSpan(
+                  result, node.getSymbol().getLine(), node.getSymbol().getCharPositionInLine());
+            }
+
+            @Override
+            public void enterBlock(css3Parser.BlockContext ctx) {
+              if (ctx == null) return;
+
+              boolean hasContent = false;
+
+              // بررسی اینکه داخل بلاک چیزی هست یا نه
+              for (int i = 0; i < ctx.getChildCount(); i++) {
+                var child = ctx.getChild(i);
+
+                // اگر چیزی غیر از { یا } یا whitespace بود
+                String text = child.getText();
+                if (!text.equals("{") && !text.equals("}")) {
+                  hasContent = true;
+                  break;
+                }
+              }
+
+              if (!hasContent) {
+                int line = ctx.getStart().getLine() - 1;
+                int column = ctx.getStart().getCharPositionInLine();
+
+                Utils.setWaringSpan(result, line, column);
+                System.out.println("⚠ بلاک خالی در خط: " + (line + 1));
+              }
+            }
+          };
+
+      ParseTreeWalker walker = new ParseTreeWalker();
+      walker.walk(base, tree);
 
     } catch (IOException e) {
       e.printStackTrace();
@@ -531,7 +567,11 @@ public class CSS3Analyzer implements CodeAnalyzer {
             TextStyle.makeStyle(
                 ColorUtils.calculateLuminance(color) > 0.5
                     ? EditorColorScheme.black
-                    : EditorColorScheme.white));
+                    : EditorColorScheme.white,
+                0,
+                true,
+                true,
+                false));
     span.setBackgroundColorMy(color);
     result.add(line, span);
 

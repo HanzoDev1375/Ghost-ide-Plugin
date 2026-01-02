@@ -1,12 +1,7 @@
 package ir.ninjacoder.plloader.betterhtml;
 
-import android.graphics.Color;
-import com.github.javaparser.StaticJavaParser;
-import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
-import com.github.javaparser.ast.body.MethodDeclaration;
 import io.github.rosemoe.sora.interfaces.CodeAnalyzer;
 import io.github.rosemoe.sora.langs.html.HTMLLanguage;
-import io.github.rosemoe.sora.model.Inlay;
 import io.github.rosemoe.sora.widget.CodeEditor;
 import ir.ninjacoder.ghostide.core.IdeEditor;
 import ir.ninjacoder.ghostide.core.activities.BaseCompat;
